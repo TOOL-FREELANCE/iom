@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: iom-api
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+server:
+  servlet:
+    context-path: /

@@ -1,0 +1,14 @@
+target/
+.idea/
+.vscode/
+*.iml
+
+.git/
+.gitignore
+
+README.md
+HELP.md
+
+.env
+.env.*
+!*.example
