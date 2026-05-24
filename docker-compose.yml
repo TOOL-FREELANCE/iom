@@ -1,7 +1,6 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: iom-postgres
+  db:
+    image: postgres:17-alpine
     restart: unless-stopped
 
     environment:
@@ -24,28 +23,27 @@ services:
       context: ./api
       dockerfile: Dockerfile
 
-    container_name: iom-api
     restart: unless-stopped
 
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
 
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
 
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       SERVER_PORT: 8080
 
-      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-iom_dev}
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-iom_dev}
       DB_USERNAME: ${POSTGRES_USER:-iom}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-iom}
 
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-20}
       DB_POOL_MIN_IDLE: ${DB_POOL_MIN_IDLE:-5}
 
-      TELEGRAM_BOT_ENABLED: ${TELEGRAM_BOT_ENABLED:-true}
+      TELEGRAM_BOT_ENABLED: ${TELEGRAM_BOT_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
 
