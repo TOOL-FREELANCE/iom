@@ -1,23 +1,29 @@
 package me.nghlong3004.iom.api.service;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDate;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.nghlong3004.iom.api.application.port.out.MessageInterpreter;
+import me.nghlong3004.iom.api.domain.transaction.Category;
+import me.nghlong3004.iom.api.domain.transaction.Currency;
 import me.nghlong3004.iom.api.domain.transaction.ParsedTransaction;
+import me.nghlong3004.iom.api.domain.transaction.TransactionType;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Service;
 
 /**
- * {@link MessageInterpreter} implementation backed by an LLM API. Sends structured prompts
- * containing raw user text and parses the JSON response into {@link ParsedTransaction}.
+ * {@link MessageInterpreter} implementation backed by DeepSeek through Spring AI.
  *
- * <p>Returns {@link Optional#empty()} when:
- * <ul>
- *   <li>The LLM determines the message is not a financial transaction</li>
- *   <li>The LLM call fails (graceful degradation with warning log)</li>
- *   <li>The JSON response cannot be parsed</li>
- * </ul>
+ * <p>Returns {@link Optional#empty()} when the input is blank, the model says it is not a
+ * transaction, the model call fails, or the model output cannot be parsed into a valid
+ * {@link ParsedTransaction}.
  *
  * @author nghlong3004 (Nguyen Hoang Long)
  * @since 5/24/2026
@@ -27,11 +33,10 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class LlmMessageInterpreter implements MessageInterpreter {
 
-  private final ObjectMapper objectMapper;
-
   private static final String SYSTEM_PROMPT =
       """
       You are a financial transaction parser. Given a user message, extract structured data.
+      Respond with one valid JSON object only. Do not use markdown or extra text.
 
       Rules:
       - If the message is NOT about a financial transaction, respond with: {"is_transaction": false}
@@ -47,7 +52,8 @@ public class LlmMessageInterpreter implements MessageInterpreter {
         }
 
       Currency detection:
-      - "k", "nghin", "nghìn", "trieu", "triệu", "dong", "đồng", "d", no indicator -> VND
+      - Vietnamese amount words with or without accents: k, nghin, trieu, dong, d -> VND
+      - No currency indicator -> VND
       - "$", "dollar", "usd" -> USD
       - "euro", "eur" -> EUR
       - "yen", "jpy" -> JPY
@@ -68,8 +74,12 @@ public class LlmMessageInterpreter implements MessageInterpreter {
       - "hom kia" -> day before yesterday
       - Default: today
 
-      Respond ONLY with valid JSON. No explanation.
+      Example input: an sang 30k
+      Example output: {"is_transaction": true, "type": "EXPENSE", "amount": 30000, "currency": "VND", "category": "FOOD", "note": "an sang", "occurred_at": null}
       """;
+
+  private final ObjectMapper objectMapper;
+  private final ChatModel chatModel;
 
   @Override
   public Optional<ParsedTransaction> interpret(String text) {
@@ -77,15 +87,64 @@ public class LlmMessageInterpreter implements MessageInterpreter {
       return Optional.empty();
     }
 
-    // TODO: Replace with actual LLM API call.
-    // This is the integration point for the LLM provider (OpenAI/Gemini/Anthropic).
-    // The implementation should:
-    // 1. Send SYSTEM_PROMPT + user text to the LLM
-    // 2. Parse the JSON response
-    // 3. Map to ParsedTransaction using objectMapper
-    // 4. Return Optional.empty() if is_transaction=false or on any failure
+    var normalizedText = text.trim();
 
-    log.warn("LLM integration not yet configured. Returning empty for text: {}", text);
-    return Optional.empty();
+    try {
+      var content =
+          chatModel.call(
+              new SystemMessage(SYSTEM_PROMPT),
+              new UserMessage(buildUserPrompt(normalizedText)));
+
+      return parseResponse(content);
+    } catch (RuntimeException exception) {
+      log.warn(
+          "Failed to interpret message with DeepSeek. text={}, reason={}",
+          normalizedText,
+          exception.toString());
+      return Optional.empty();
+    }
   }
+
+  private String buildUserPrompt(String text) {
+    return "Current date: " + LocalDate.now() + "\nUser message: " + text;
+  }
+
+  private Optional<ParsedTransaction> parseResponse(String content) {
+    if (content == null || content.isBlank()) {
+      log.warn("DeepSeek returned empty content.");
+      return Optional.empty();
+    }
+
+    try {
+      var response = objectMapper.readValue(content, LlmTransactionResponse.class);
+      if (!Boolean.TRUE.equals(response.isTransaction())) {
+        return Optional.empty();
+      }
+
+      return Optional.of(
+          new ParsedTransaction(
+              response.type(),
+              response.amount(),
+              response.currency(),
+              response.category(),
+              response.note(),
+              response.occurredAt()));
+    } catch (JsonProcessingException | IllegalArgumentException exception) {
+      log.warn(
+          "Failed to parse DeepSeek response. content={}, reason={}",
+          content,
+          exception.toString());
+      return Optional.empty();
+    }
+  }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  private record LlmTransactionResponse(
+      @JsonProperty("is_transaction") Boolean isTransaction,
+      TransactionType type,
+      long amount,
+      Currency currency,
+      Category category,
+      String note,
+      @JsonProperty("occurred_at") LocalDate occurredAt) {}
 }

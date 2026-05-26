@@ -46,6 +46,33 @@ spring:
     time-zone: Asia/Ho_Chi_Minh
     default-property-inclusion: non_null
 
+  ai:
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+          temperature: 0
+          max-tokens: ${DEEPSEEK_MAX_TOKENS:512}
+          response-format:
+            type: json_object
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/api/v1/login/oauth2/code/{registrationId}"
+          github:
+            client-id: ${GITHUB_CLIENT_ID:}
+            client-secret: ${GITHUB_CLIENT_SECRET:}
+            scope: read:user,user:email
+            redirect-uri: "{baseUrl}/api/v1/login/oauth2/code/{registrationId}"
+
 management:
   endpoints:
     web:
@@ -74,6 +101,8 @@ iom:
     enabled: ${TELEGRAM_BOT_ENABLED:true}
     bot-token: ${TELEGRAM_BOT_TOKEN}
     bot-username: ${TELEGRAM_BOT_USERNAME}
+  client:
+    base-url: ${WEB_BASE_URL}
   security:
     jwt:
       secret-key: ${JWT_SECRET_KEY}
