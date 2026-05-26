@@ -28,6 +28,18 @@ public class BotMessages {
     return get("bot.fallback.message");
   }
 
+  public String startMessage() {
+    return get("bot.start.message");
+  }
+
+  public String helpMessage() {
+    return get("bot.help.message");
+  }
+
+  public String unknownCommandMessage() {
+    return get("bot.unknown-command.message");
+  }
+
   public String transactionRecorded(String typeLabel, String formattedAmount, String note) {
     if (note == null || note.isBlank()) {
       return get("bot.transaction.recorded.no-note", typeLabel, formattedAmount);
@@ -45,6 +57,18 @@ public class BotMessages {
 
   public String summaryLine(String expense, String income, String currencyName) {
     return get("bot.summary.line", expense, income, currencyName);
+  }
+
+  public String summaryExpenseLine(String expense, String currencyName) {
+    return get("bot.summary.expense-line", expense, currencyName);
+  }
+
+  public String summaryIncomeLine(String income, String currencyName) {
+    return get("bot.summary.income-line", income, currencyName);
+  }
+
+  public String summaryClarification(String clarificationMessage) {
+    return get("bot.summary.clarification", clarificationMessage);
   }
 
   public String summaryTotal(int count) {

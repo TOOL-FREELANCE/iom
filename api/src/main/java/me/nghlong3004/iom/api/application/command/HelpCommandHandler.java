@@ -1,6 +1,7 @@
 package me.nghlong3004.iom.api.application.command;
 
 import lombok.RequiredArgsConstructor;
+import me.nghlong3004.iom.api.common.BotMessages;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
@@ -17,31 +18,16 @@ import org.springframework.stereotype.Component;
 public class HelpCommandHandler implements BotCommandHandler {
 
   private final MessageSender messageSender;
+  private final BotMessages botMessages;
 
   @Override
   public boolean supports(IncomingMessage message) {
-    return BotCommand.HELP.getCommand().equalsIgnoreCase(message.normalizedText());
+    return BotCommandParser.matches(message, BotCommand.HELP);
   }
 
   @Override
-  public void handle(IncomingMessage message) {
-    messageSender.send(
-        OutgoingMessage.replyTo(
-            message,
-            """
-                IOM hiện hỗ trợ:
-
-                /start - Bắt đầu
-                /help - Xem hướng dẫn
-
-                Ví dụ ghi chi tiêu:
-                - ăn sáng 30k
-                - mua sách 120k
-                - đổ xăng 50k
-
-                Ví dụ ghi thu nhập:
-                - nhận lương 5 triệu
-                - được thưởng 500k
-                """));
+  public boolean handle(IncomingMessage message) {
+    messageSender.send(OutgoingMessage.replyTo(message, botMessages.helpMessage()));
+    return true;
   }
 }

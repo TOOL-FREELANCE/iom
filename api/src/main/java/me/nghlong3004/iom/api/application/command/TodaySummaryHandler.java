@@ -4,13 +4,12 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
-import me.nghlong3004.iom.api.common.AmountFormatter;
 import me.nghlong3004.iom.api.common.BotMessages;
+import me.nghlong3004.iom.api.common.SummaryFormatter;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
 import me.nghlong3004.iom.api.service.TransactionService;
-import me.nghlong3004.iom.api.service.TransactionSummary;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -30,14 +29,15 @@ public class TodaySummaryHandler implements BotCommandHandler {
   private final TransactionService transactionService;
   private final MessageSender messageSender;
   private final BotMessages botMessages;
+  private final SummaryFormatter summaryFormatter;
 
   @Override
   public boolean supports(IncomingMessage message) {
-    return message.normalizedText().equalsIgnoreCase(BotCommand.TODAY.getCommand());
+    return BotCommandParser.matches(message, BotCommand.TODAY);
   }
 
   @Override
-  public void handle(IncomingMessage message) {
+  public boolean handle(IncomingMessage message) {
     var user = userResolver.resolve(message);
     var zone = ZoneId.systemDefault();
     var today = LocalDate.now(zone);
@@ -45,25 +45,8 @@ public class TodaySummaryHandler implements BotCommandHandler {
     var to = today.plusDays(1).atStartOfDay(zone).toInstant();
 
     var summary = transactionService.summarize(user, from, to);
-    var reply = formatSummary(botMessages.todayLabel(), summary);
+    var reply = summaryFormatter.format(botMessages.todayLabel(), summary);
     messageSender.send(OutgoingMessage.replyTo(message, reply));
-  }
-
-  String formatSummary(String label, TransactionSummary summary) {
-    if (summary.transactionCount() == 0) {
-      return botMessages.summaryEmpty(label);
-    }
-
-    var sb = new StringBuilder(label).append(":\n");
-    summary
-        .totals()
-        .forEach(
-            (currency, total) -> {
-              var income = AmountFormatter.format(total.totalIncome(), currency);
-              var expense = AmountFormatter.format(total.totalExpense(), currency);
-              sb.append(botMessages.summaryLine(expense, income, currency.name())).append("\n");
-            });
-    sb.append(botMessages.summaryTotal(summary.transactionCount()));
-    return sb.toString();
+    return true;
   }
 }

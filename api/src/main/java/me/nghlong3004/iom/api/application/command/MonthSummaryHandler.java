@@ -5,6 +5,7 @@ import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
 import me.nghlong3004.iom.api.common.BotMessages;
+import me.nghlong3004.iom.api.common.SummaryFormatter;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
@@ -28,15 +29,15 @@ public class MonthSummaryHandler implements BotCommandHandler {
   private final TransactionService transactionService;
   private final MessageSender messageSender;
   private final BotMessages botMessages;
-  private final TodaySummaryHandler todaySummaryHandler;
+  private final SummaryFormatter summaryFormatter;
 
   @Override
   public boolean supports(IncomingMessage message) {
-    return message.normalizedText().equalsIgnoreCase(BotCommand.MONTH.getCommand());
+    return BotCommandParser.matches(message, BotCommand.MONTH);
   }
 
   @Override
-  public void handle(IncomingMessage message) {
+  public boolean handle(IncomingMessage message) {
     var user = userResolver.resolve(message);
     var zone = ZoneId.systemDefault();
     var currentMonth = YearMonth.now(zone);
@@ -46,7 +47,8 @@ public class MonthSummaryHandler implements BotCommandHandler {
     var label =
         botMessages.monthLabel(currentMonth.getMonthValue(), currentMonth.getYear());
     var summary = transactionService.summarize(user, from, to);
-    var reply = todaySummaryHandler.formatSummary(label, summary);
+    var reply = summaryFormatter.format(label, summary);
     messageSender.send(OutgoingMessage.replyTo(message, reply));
+    return true;
   }
 }

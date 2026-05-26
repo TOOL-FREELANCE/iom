@@ -26,7 +26,8 @@ public class EchoMessageHandler implements BotCommandHandler {
   }
 
   @Override
-  public void handle(IncomingMessage message) {
+  public boolean handle(IncomingMessage message) {
     messageSender.send(OutgoingMessage.replyTo(message, botMessages.fallbackMessage()));
+    return true;
   }
 }

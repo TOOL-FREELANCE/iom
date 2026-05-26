@@ -37,6 +37,14 @@ logging:
     me.nghlong3004.iom: INFO
 
 iom:
+  bot:
+    intents:
+      summary:
+        action-keywords: [xem, tong, thong ke, bao nhieu, bao cao]
+        today-keywords: [hom nay, ngay nay, today]
+        month-keywords: [thang nay, month]
+        expense-keywords: [chi, tieu, chi tieu]
+        income-keywords: [thu, thu nhap, luong]
   telegram:
     enabled: false
     bot-token: test-token

@@ -1,6 +1,7 @@
 package me.nghlong3004.iom.api.application.command;
 
 import lombok.RequiredArgsConstructor;
+import me.nghlong3004.iom.api.common.BotMessages;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
@@ -17,26 +18,16 @@ import org.springframework.stereotype.Component;
 public class StartCommandHandler implements BotCommandHandler {
 
   private final MessageSender messageSender;
+  private final BotMessages botMessages;
 
   @Override
   public boolean supports(IncomingMessage message) {
-    return BotCommand.START.getCommand().equalsIgnoreCase(message.normalizedText());
+    return BotCommandParser.matches(message, BotCommand.START);
   }
 
   @Override
-  public void handle(IncomingMessage message) {
-    messageSender.send(
-        OutgoingMessage.replyTo(
-            message,
-            """
-                Xin chào, mình là IOM - Input Output Money.
-
-                Bạn có thể ghi thu/chi bằng cách nhắn:
-                - ăn sáng 30k
-                - đổ xăng 50k
-                - nhận lương 5 triệu
-
-                Gõ /help để xem hướng dẫn.
-                """));
+  public boolean handle(IncomingMessage message) {
+    messageSender.send(OutgoingMessage.replyTo(message, botMessages.startMessage()));
+    return true;
   }
 }

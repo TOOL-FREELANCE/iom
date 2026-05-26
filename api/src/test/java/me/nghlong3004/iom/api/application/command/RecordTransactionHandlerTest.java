@@ -67,10 +67,11 @@ class RecordTransactionHandlerTest {
         .willReturn(saved);
     given(confirmationFormatter.format(parsed)).willReturn("Da ghi nhan");
 
-    handler.handle(message);
+    var handled = handler.handle(message);
 
     var outgoingCaptor = ArgumentCaptor.forClass(OutgoingMessage.class);
     verify(messageSender).send(outgoingCaptor.capture());
+    assertThat(handled).isTrue();
     assertThat(outgoingCaptor.getValue())
         .extracting(OutgoingMessage::channel, OutgoingMessage::conversationId, OutgoingMessage::text)
         .containsExactly(MessageChannel.TELEGRAM, "chat-1", "Da ghi nhan");
@@ -82,8 +83,9 @@ class RecordTransactionHandlerTest {
     var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
     given(messageInterpreter.interpret("hello")).willReturn(Optional.empty());
 
-    handler.handle(message);
+    var handled = handler.handle(message);
 
+    assertThat(handled).isFalse();
     verify(userResolver, never()).resolve(any());
     verify(transactionService, never()).record(any(), any(), any(), any());
     verify(messageSender, never()).send(any());

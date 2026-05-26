@@ -16,10 +16,12 @@ public class BotCommandRouter {
     private final List<BotCommandHandler> handlers;
 
     public void route(IncomingMessage message) {
-        handlers.stream()
-                .filter(handler -> handler.supports(message))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No command handler found"))
-                .handle(message);
+        for (BotCommandHandler handler : handlers) {
+            if (handler.supports(message) && handler.handle(message)) {
+                return;
+            }
+        }
+
+        throw new IllegalStateException("No command handler handled the message");
     }
 }

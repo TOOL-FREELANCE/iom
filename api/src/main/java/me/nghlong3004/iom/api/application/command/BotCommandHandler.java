@@ -10,5 +10,5 @@ public interface BotCommandHandler {
 
   boolean supports(IncomingMessage message);
 
-  void handle(IncomingMessage message);
+  boolean handle(IncomingMessage message);
 }

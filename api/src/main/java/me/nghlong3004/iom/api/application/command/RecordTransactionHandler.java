@@ -41,11 +41,11 @@ public class RecordTransactionHandler implements BotCommandHandler {
   }
 
   @Override
-  public void handle(IncomingMessage message) {
+  public boolean handle(IncomingMessage message) {
     var parsed = messageInterpreter.interpret(message.normalizedText());
 
     if (parsed.isEmpty()) {
-      return;
+      return false;
     }
 
     var user = userResolver.resolve(message);
@@ -56,5 +56,6 @@ public class RecordTransactionHandler implements BotCommandHandler {
     messageSender.send(OutgoingMessage.replyTo(message, confirmation));
 
     log.info("Transaction {} recorded for user {}", transaction.getId(), user.getId());
+    return true;
   }
 }
