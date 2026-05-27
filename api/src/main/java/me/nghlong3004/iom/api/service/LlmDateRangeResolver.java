@@ -9,24 +9,34 @@ import java.time.ZoneId;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import me.nghlong3004.iom.api.application.port.out.SummaryIntentInterpreter;
+import me.nghlong3004.iom.api.application.port.out.DateRangeResolver;
+import me.nghlong3004.iom.api.common.BotMessages;
+import me.nghlong3004.iom.api.domain.message.IncomingMessage;
+import me.nghlong3004.iom.api.domain.message.MessageSender;
+import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
+import me.nghlong3004.iom.api.domain.summary.DateRange;
 import me.nghlong3004.iom.api.domain.summary.FlowFilter;
-import me.nghlong3004.iom.api.domain.summary.ParsedSummaryIntent;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.stereotype.Service;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
 
 /**
- * {@link SummaryIntentInterpreter} implementation backed by DeepSeek through Spring AI.
+ * LLM-backed {@link DateRangeResolver} that parses natural-language date expressions using DeepSeek
+ * through Spring AI. Runs as fallback in the chain (after keyword resolver).
+ *
+ * <p>When the LLM indicates clarification is needed, a clarification reply is sent as a
+ * side-effect and {@link Optional#empty()} is returned.
  *
  * @author nghlong3004 (Nguyen Hoang Long)
- * @since 5/26/2026
+ * @since 5/27/2026
  */
 @Slf4j
-@Service
+@Component
+@Order(2)
 @RequiredArgsConstructor
-public class LlmSummaryIntentInterpreter implements SummaryIntentInterpreter {
+public class LlmDateRangeResolver implements DateRangeResolver {
 
   private static final String SYSTEM_PROMPT =
       """
@@ -34,7 +44,7 @@ public class LlmSummaryIntentInterpreter implements SummaryIntentInterpreter {
       Respond with one valid JSON object only. Do not use markdown or extra text.
 
       Task:
-      - Decide whether the user asks to view transaction totals or summaries.
+      - Decide whether the user asks to view transaction totals, summaries, or history.
       - Parse the date range when possible.
       - Parse whether the user asks for expenses, income, or both.
 
@@ -50,8 +60,8 @@ public class LlmSummaryIntentInterpreter implements SummaryIntentInterpreter {
       }
 
       Rules:
-      - If the message is not about viewing totals, income, expenses, spending, or summaries,
-        return {"is_summary": false}.
+      - If the message is not about viewing totals, income, expenses, spending, history,
+        or summaries, return {"is_summary": false}.
       - If it is a summary request but the period is missing or ambiguous, return
         {"is_summary": true, "needs_clarification": true, "clarification_message": "..."}.
       - If it is valid, return "needs_clarification": false and include from, to, label, flow_filter.
@@ -67,14 +77,25 @@ public class LlmSummaryIntentInterpreter implements SummaryIntentInterpreter {
 
   private final ObjectMapper objectMapper;
   private final ChatModel chatModel;
+  private final MessageSender messageSender;
+  private final BotMessages botMessages;
+
+  /** Thread-local context for sending clarification replies. */
+  private static final ThreadLocal<IncomingMessage> currentMessage = new ThreadLocal<>();
+
+  public static void setCurrentMessage(IncomingMessage message) {
+    currentMessage.set(message);
+  }
+
+  public static void clearCurrentMessage() {
+    currentMessage.remove();
+  }
 
   @Override
-  public Optional<ParsedSummaryIntent> interpret(String text) {
-    if (text == null || text.isBlank()) {
+  public Optional<DateRange> resolve(String normalizedText) {
+    if (normalizedText == null || normalizedText.isBlank()) {
       return Optional.empty();
     }
-
-    var normalizedText = text.trim();
 
     try {
       var content =
@@ -85,7 +106,7 @@ public class LlmSummaryIntentInterpreter implements SummaryIntentInterpreter {
       return parseResponse(content);
     } catch (RuntimeException exception) {
       log.warn(
-          "Failed to interpret summary intent with DeepSeek. text={}, reason={}",
+          "Failed to interpret with LLM. text={}, reason={}",
           normalizedText,
           exception.toString());
       return Optional.empty();
@@ -96,38 +117,46 @@ public class LlmSummaryIntentInterpreter implements SummaryIntentInterpreter {
     return "Current date: " + LocalDate.now() + "\nUser message: " + text;
   }
 
-  private Optional<ParsedSummaryIntent> parseResponse(String content) {
+  private Optional<DateRange> parseResponse(String content) {
     if (content == null || content.isBlank()) {
-      log.warn("DeepSeek returned empty summary intent content.");
+      log.warn("LLM returned empty content.");
       return Optional.empty();
     }
 
     try {
-      var response = objectMapper.readValue(content, LlmSummaryIntentResponse.class);
+      var response = objectMapper.readValue(content, LlmDateResponse.class);
       if (!Boolean.TRUE.equals(response.isSummary())) {
         return Optional.empty();
       }
 
       if (Boolean.TRUE.equals(response.needsClarification())) {
-        return Optional.of(ParsedSummaryIntent.clarification(response.clarificationMessage()));
+        sendClarificationReply(response.clarificationMessage());
+        return Optional.empty();
       }
 
       var zone = ZoneId.systemDefault();
       var from = LocalDate.parse(response.from()).atStartOfDay(zone).toInstant();
       var to = LocalDate.parse(response.to()).atStartOfDay(zone).toInstant();
-      return Optional.of(
-          ParsedSummaryIntent.summary(from, to, response.label(), response.flowFilter()));
+      return Optional.of(DateRange.custom(from, to, response.label()));
     } catch (JsonProcessingException | RuntimeException exception) {
       log.warn(
-          "Failed to parse DeepSeek summary intent response. content={}, reason={}",
+          "Failed to parse LLM date response. content={}, reason={}",
           content,
           exception.toString());
       return Optional.empty();
     }
   }
 
+  private void sendClarificationReply(String clarificationMessage) {
+    var message = currentMessage.get();
+    if (message != null && clarificationMessage != null) {
+      var reply = botMessages.summaryClarification(clarificationMessage);
+      messageSender.send(OutgoingMessage.replyTo(message, reply));
+    }
+  }
+
   @JsonIgnoreProperties(ignoreUnknown = true)
-  private record LlmSummaryIntentResponse(
+  private record LlmDateResponse(
       @JsonProperty("is_summary") Boolean isSummary,
       @JsonProperty("needs_clarification") Boolean needsClarification,
       String from,

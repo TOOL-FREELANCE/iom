@@ -40,7 +40,7 @@
 
 ## 3. Architecture
 
-The project follows **Hexagonal Architecture** (Ports & Adapters) with the **Strategy Pattern** as the primary design pattern.
+The project follows **Hexagonal Architecture** (Ports & Adapters) with **Strategy Pattern**, **Chain of Responsibility**, and **Sealed Classes** as primary design patterns.
 
 ### 3.1 Layer Diagram
 
@@ -56,10 +56,14 @@ application/command/         Strategy routing (BotCommandHandler implementations
 domain/      application/port/out/
   message/     MessageInterpreter   ← Strategy port (LLM parsing)
   transaction/ UserResolver         ← Strategy port (user lookup)
+  summary/     DateRangeResolver    ← Chain of Responsibility port
   user/        MessageSender        ← Port (reply sending)
   │
 service/                     Infrastructure adapters (implements ports)
   LlmMessageInterpreter       implements MessageInterpreter
+  KeywordDateResolver          implements DateRangeResolver (Order 1)
+  LlmDateRangeResolver         implements DateRangeResolver (Order 2)
+  DateRangeResolverChain       orchestrates DateRangeResolver chain
   DefaultUserResolver          implements UserResolver
   TransactionService           business logic (composition)
   mapper/                      MapStruct mappers
@@ -115,7 +119,7 @@ message and `false` when the router should continue to the next matching handler
 | 4 | `MonthSummaryHandler` | `/month` |
 | 10 | `UnknownCommandHandler` | Any unrecognized `/command` |
 | 50 | `RecordTransactionHandler` | Non-command text with financial data |
-| 80 | `SummaryIntentHandler` | Natural-language summary requests |
+| 80 | `ViewFinancesHandler` | Natural-language summary/history requests (pipeline) |
 | 99 | `EchoMessageHandler` | Any remaining text (fallback guidance) |
 
 `RecordTransactionHandler` calls `MessageInterpreter.interpret()`. If the LLM returns empty
@@ -177,10 +181,15 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 | Decision | Rationale |
 |----------|-----------|
 | **LLM for parsing** (not regex) | Core parsing delegated to LLM via `MessageInterpreter` port. Handles Vietnamese natural language, multiple currencies, relative dates — far more robust than regex. |
-| **DeepSeek via Spring AI** | Transaction parsing and summary intent fallback use Spring AI `ChatModel` with DeepSeek. Provider-specific types stay inside service adapters. |
-| **Bot handlers return boolean** | `BotCommandHandler.handle()` returns `true` when handled and `false` when routing should continue. This lets transaction parsing fall through to summary intent and fallback replies. |
-| **Natural summary intent fallback** | `SummaryIntentHandler` runs deterministic today/month rules first, then calls `SummaryIntentInterpreter` for date ranges and ambiguous natural-language summary requests. |
-| **Strategy Pattern** | Applied to command routing (`BotCommandHandler`), message interpretation (`MessageInterpreter`), and user resolution (`UserResolver`). Open/Closed Principle: add new behavior without modifying existing code. |
+| **DeepSeek via Spring AI** | Transaction parsing and LLM date resolution use Spring AI `ChatModel` with DeepSeek. Provider-specific types stay inside service adapters. |
+| **Bot handlers return boolean** | `BotCommandHandler.handle()` returns `true` when handled and `false` when routing should continue. This lets transaction parsing fall through to finance view and fallback replies. |
+| **Query Pipeline Architecture** | `ViewFinancesHandler` uses a 4-stage pipeline: DateRange resolution → FlowFilter/ViewMode detection → data fetching → rendering. Each stage follows SRP. |
+| **Chain of Responsibility** | `DateRangeResolver` chain: `KeywordDateResolver` (deterministic, Order 1) → `LlmDateRangeResolver` (LLM fallback, Order 2). Add new resolvers by implementing `DateRangeResolver` with a new `@Order`. |
+| **Sealed `FinanceQuery`** | `FinanceQuery.View` and `FinanceQuery.Clarification` — compiler-enforced exhaustive switch handling (Java 21). |
+| **`DateRange` Value Object** | Immutable record with factory methods (`today()`, `yesterday()`, `daysAgo()`, `thisWeek()`, `thisMonth()`, `custom()`). Replaces scattered `Instant from/to` pairs. |
+| **ViewMode auto-adjustment** | DETAIL with ≤10 transactions → COMPACT (list + totals). DETAIL with >10 → SUMMARY. Keeps Telegram replies readable. |
+| **Category emoji** | `Category` enum has `emoji` field for detail view rendering (e.g., 🍜 FOOD, 🚗 TRANSPORT). |
+| **Strategy Pattern** | Applied to command routing (`BotCommandHandler`), message interpretation (`MessageInterpreter`), user resolution (`UserResolver`), and finance view rendering (`FinanceViewRenderer`). |
 | **MapStruct** for all mapping | No manual `new Entity(...)` for cross-layer conversions. Consistent with existing `TelegramMessageMapper`. Mappers: `TransactionMapper`, `UserMapper`. |
 | **Multi-currency** from day one | `Currency` enum with formatting metadata (`symbol`, `groupSeparator`, `minorUnits`). Amounts stored in smallest unit. `AmountFormatter` is currency-aware. |
 | **Auto-provisioning users** | `DefaultUserResolver` creates `AppUser` + `ExternalAccount` on first Telegram message. No registration flow needed for bot usage. |
@@ -209,12 +218,14 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 | [BotCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/BotCommandHandler.java) | Strategy interface: `supports()` + `handle()` |
 | [StartCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/StartCommandHandler.java) | /start welcome |
 | [HelpCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/HelpCommandHandler.java) | /help guide |
-| [TodaySummaryHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/TodaySummaryHandler.java) | /today — daily summary by currency |
-| [MonthSummaryHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/MonthSummaryHandler.java) | /month — monthly summary by currency |
+| [TodaySummaryHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/TodaySummaryHandler.java) | /today — uses DateRange.today() + FinanceViewRenderer |
+| [MonthSummaryHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/MonthSummaryHandler.java) | /month — uses DateRange.thisMonth() + FinanceViewRenderer |
+| [ViewFinancesHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/ViewFinancesHandler.java) | Natural-language summary/history — pipeline architecture |
 | [RecordTransactionHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/RecordTransactionHandler.java) | Parses financial messages, records transactions |
 | [EchoMessageHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/EchoMessageHandler.java) | Fallback: guidance text for unrecognized input |
 | [UnknownCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/UnknownCommandHandler.java) | Catches unrecognized slash commands |
 | [MessageInterpreter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/port/out/MessageInterpreter.java) | Port: natural language → ParsedTransaction |
+| [DateRangeResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/port/out/DateRangeResolver.java) | Port: text → Optional\<DateRange\> (Chain of Responsibility) |
 | [UserResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/port/out/UserResolver.java) | Port: IncomingMessage → AppUser |
 
 ### 6.3 Domain (`domain/`)
@@ -224,8 +235,12 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 | [IncomingMessage.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/message/IncomingMessage.java) | Record: channel, externalUserId, conversationId, text |
 | [OutgoingMessage.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/message/OutgoingMessage.java) | Record: channel, conversationId, text |
 | [MessageSender.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/message/MessageSender.java) | Port interface for sending replies |
+| [DateRange.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/summary/DateRange.java) | Value Object: immutable date range with factory methods |
+| [ViewMode.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/summary/ViewMode.java) | Enum: SUMMARY, DETAIL, COMPACT |
+| [FlowFilter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/summary/FlowFilter.java) | Enum: ALL, EXPENSE, INCOME |
+| [FinanceQuery.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/summary/FinanceQuery.java) | Sealed interface: View \| Clarification |
 | [TransactionType.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/transaction/TransactionType.java) | Enum: INCOME, EXPENSE |
-| [Category.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/transaction/Category.java) | Enum: FOOD, TRANSPORT, SALARY, etc. |
+| [Category.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/transaction/Category.java) | Enum with emoji: FOOD(🍜), TRANSPORT(🚗), etc. |
 | [Currency.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/transaction/Currency.java) | Enum with formatting metadata (symbol, groupSeparator, minorUnits) |
 | [ParsedTransaction.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/transaction/ParsedTransaction.java) | Validated record: type, amount, currency, category, note, occurredAt |
 | [Transaction.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/domain/transaction/Transaction.java) | JPA entity mapped to `transactions` table |
@@ -236,9 +251,12 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 ### 6.4 Service (`service/`)
 | File | Purpose |
 |------|---------|
-| [LlmMessageInterpreter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/LlmMessageInterpreter.java) | MessageInterpreter adapter — LLM API call (TODO: wire actual provider) |
+| [LlmMessageInterpreter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/LlmMessageInterpreter.java) | MessageInterpreter adapter — LLM transaction parsing via DeepSeek |
+| [KeywordDateResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/KeywordDateResolver.java) | DateRangeResolver — deterministic keyword matching (Order 1) |
+| [LlmDateRangeResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/LlmDateRangeResolver.java) | DateRangeResolver — LLM fallback via DeepSeek (Order 2) |
+| [DateRangeResolverChain.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/DateRangeResolverChain.java) | Orchestrates DateRangeResolver chain |
 | [DefaultUserResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/DefaultUserResolver.java) | UserResolver adapter — auto-provisions users on first message |
-| [TransactionService.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/TransactionService.java) | Business logic: record() and summarize() |
+| [TransactionService.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/TransactionService.java) | Business logic: record(), summarize(), findByRange() |
 | [TransactionSummary.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/TransactionSummary.java) | Record: multi-currency summary via Collectors.teeing |
 | [CustomUserDetailsService.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/CustomUserDetailsService.java) | Spring Security UserDetailsService impl |
 | [TransactionMapper.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/service/mapper/TransactionMapper.java) | MapStruct: ParsedTransaction + context → Transaction entity |
@@ -256,6 +274,7 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 |------|---------|
 | [AmountFormatter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/common/AmountFormatter.java) | Currency-aware formatting: `format(30000, VND)` → `"30.000đ"` |
 | [ConfirmationFormatter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/common/ConfirmationFormatter.java) | Formats transaction confirmation bot replies |
+| [FinanceViewRenderer.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/common/FinanceViewRenderer.java) | Multi-mode finance view renderer (SUMMARY/DETAIL/COMPACT) |
 | [BotMessages.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/common/BotMessages.java) | Spring MessageSource wrapper for externalized Vietnamese text |
 
 ### 6.7 Config (`config/`)
@@ -321,7 +340,8 @@ cd api
 | Item | Status | Details |
 |------|--------|---------|
 | **LLM transaction parsing** | Done | `LlmMessageInterpreter` uses Spring AI `ChatModel` with DeepSeek and returns empty on invalid, failed, or non-transaction responses. |
-| **LLM summary intent fallback** | Done | `LlmSummaryIntentInterpreter` parses natural summary requests, date ranges, flow filters, and clarification cases. |
-| **Unit tests** | In progress | Core bot routing, parser adapters, formatters, transaction handling, and service behavior have unit tests. Integration tests use Testcontainers and may skip without Docker. |
+| **Query Pipeline Architecture** | Done | `ViewFinancesHandler` with `DateRangeResolverChain` (keyword + LLM), `FinanceViewRenderer` (SUMMARY/DETAIL/COMPACT), `ViewMode` auto-adjustment. |
+| **Transaction history/detail view** | Done | Users can ask "hôm qua mua gì" to see individual transactions with emoji categories. |
+| **Unit tests** | Done | 135 unit tests passing. Integration tests use Testcontainers and may skip without Docker. |
 | **Web dashboard** | Phase 2 | React client in `client/` directory. OAuth2 login flow partially prepared in `oauth/` package. |
 | **OCR receipt scanning** | Phase 3+ | Per BRIEF.md roadmap. |

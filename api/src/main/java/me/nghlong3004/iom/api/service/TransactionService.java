@@ -1,6 +1,7 @@
 package me.nghlong3004.iom.api.service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,5 +55,13 @@ public class TransactionService {
 
     var transactions = transactionRepository.findByUserIdAndOccurredAtBetween(user.getId(), from, to);
     return TransactionSummary.from(transactions);
+  }
+
+  public List<Transaction> findByRange(
+      AppUser user, me.nghlong3004.iom.api.domain.summary.DateRange dateRange) {
+    Objects.requireNonNull(user, "user must not be null");
+    Objects.requireNonNull(dateRange, "dateRange must not be null");
+    return transactionRepository.findByUserIdAndOccurredAtBetween(
+        user.getId(), dateRange.from(), dateRange.to());
   }
 }

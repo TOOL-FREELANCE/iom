@@ -1,15 +1,18 @@
 package me.nghlong3004.iom.api.application.command;
 
-import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
-import me.nghlong3004.iom.api.common.BotMessages;
-import me.nghlong3004.iom.api.common.SummaryFormatter;
+import me.nghlong3004.iom.api.common.FinanceViewRenderer;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
+import me.nghlong3004.iom.api.domain.summary.DateRange;
+import me.nghlong3004.iom.api.domain.summary.FlowFilter;
+import me.nghlong3004.iom.api.domain.summary.ViewMode;
 import me.nghlong3004.iom.api.service.TransactionService;
+import me.nghlong3004.iom.api.service.TransactionSummary;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -28,8 +31,7 @@ public class TodaySummaryHandler implements BotCommandHandler {
   private final UserResolver userResolver;
   private final TransactionService transactionService;
   private final MessageSender messageSender;
-  private final BotMessages botMessages;
-  private final SummaryFormatter summaryFormatter;
+  private final FinanceViewRenderer renderer;
 
   @Override
   public boolean supports(IncomingMessage message) {
@@ -39,13 +41,11 @@ public class TodaySummaryHandler implements BotCommandHandler {
   @Override
   public boolean handle(IncomingMessage message) {
     var user = userResolver.resolve(message);
-    var zone = ZoneId.systemDefault();
-    var today = LocalDate.now(zone);
-    var from = today.atStartOfDay(zone).toInstant();
-    var to = today.plusDays(1).atStartOfDay(zone).toInstant();
-
-    var summary = transactionService.summarize(user, from, to);
-    var reply = summaryFormatter.format(botMessages.todayLabel(), summary);
+    var dateRange = DateRange.today(ZoneId.systemDefault());
+    var transactions = transactionService.findByRange(user, dateRange);
+    var summary = TransactionSummary.from(transactions);
+    var reply =
+        renderer.render(dateRange, ViewMode.SUMMARY, transactions, summary, FlowFilter.ALL);
     messageSender.send(OutgoingMessage.replyTo(message, reply));
     return true;
   }

@@ -82,4 +82,20 @@ public class BotMessages {
   public String monthLabel(int month, int year) {
     return get("bot.summary.label.month", month, year);
   }
+
+  public String detailHeader(String label) {
+    return get("bot.detail.header", label);
+  }
+
+  public String detailLine(int index, String emoji, String note, String typeLabel, String formattedAmount) {
+    return get("bot.detail.line", index, emoji, note, typeLabel, formattedAmount);
+  }
+
+  public String detailEmpty(String label) {
+    return get("bot.detail.empty", label);
+  }
+
+  public String compactSeparator() {
+    return get("bot.compact.separator");
+  }
 }

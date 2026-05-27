@@ -15,6 +15,10 @@ The bot currently supports:
   - `thang nay chi bao nhieu`
   - `hom qua tieu bao nhieu`
   - `tu 1/5 den 20/5 chi bao nhieu`
+- **Transaction history / detail view**, for example:
+  - `hom qua mua gi`
+  - `hom kia chi gi`
+  - `lich su tuan nay`
 - Fallback guidance for unrelated text.
 - Vietnamese user-facing replies via `messages.properties`.
 
@@ -37,8 +41,8 @@ Each handler returns a boolean from `handle(message)`:
 - `false`: handler did not handle it; router tries the next handler.
 
 This matters because non-command text first goes through transaction parsing. If the
-transaction parser says "not a transaction", routing continues to summary intent and then
-fallback.
+transaction parser says "not a transaction", routing continues to the view finances handler
+and then fallback.
 
 ## Handler Order
 
@@ -50,7 +54,7 @@ fallback.
 | `4` | `MonthSummaryHandler` | `/month` command summary |
 | `10` | `UnknownCommandHandler` | unknown slash commands |
 | `50` | `RecordTransactionHandler` | non-command transaction recording |
-| `80` | `SummaryIntentHandler` | natural-language summary intent |
+| `80` | `ViewFinancesHandler` | natural-language summary/history intent |
 | `99` | `EchoMessageHandler` | fallback guidance |
 
 ## Transaction Recording
@@ -76,29 +80,61 @@ RecordTransactionHandler
 It returns empty for blank input, non-transaction JSON, malformed JSON, invalid values, or
 model call failures.
 
-## Summary Intent Handling
+## Finance View Pipeline (Summary / History)
 
 Key files:
 
-- `application/port/out/SummaryIntentInterpreter.java`
-- `domain/summary/ParsedSummaryIntent.java`
-- `domain/summary/FlowFilter.java`
-- `service/LlmSummaryIntentInterpreter.java`
-- `application/command/SummaryIntentHandler.java`
-- `common/SummaryFormatter.java`
-- `config/BotIntentProperties.java`
+- `domain/summary/DateRange.java` — value object for date ranges
+- `domain/summary/ViewMode.java` — SUMMARY, DETAIL, COMPACT
+- `domain/summary/FlowFilter.java` — ALL, EXPENSE, INCOME
+- `domain/summary/FinanceQuery.java` — sealed interface: View | Clarification
+- `application/port/out/DateRangeResolver.java` — port for date resolution
+- `service/KeywordDateResolver.java` — deterministic keyword matcher (Order 1)
+- `service/LlmDateRangeResolver.java` — LLM fallback (Order 2)
+- `service/DateRangeResolverChain.java` — chain orchestrator
+- `application/command/ViewFinancesHandler.java` — pipeline handler
+- `common/FinanceViewRenderer.java` — multi-mode renderer
+- `config/BotIntentProperties.java` — keyword config
 
-`SummaryIntentHandler` is deterministic first, LLM second:
+### Pipeline Architecture
 
 ```text
-SummaryIntentHandler
-  -> if action keyword + today keyword: send today's summary
-  -> else if action keyword + month keyword: send this month's summary
-  -> else SummaryIntentInterpreter.interpret(text)
-       -> Optional.empty(): return false
-       -> needsClarification: send clarification reply, return true
-       -> valid date range: summarize(from inclusive, to exclusive), return true
+ViewFinancesHandler.handle(message)
+  1. DateRangeResolverChain.resolve(text)     — Chain of Responsibility
+     ├─ KeywordDateResolver (Order 1)          deterministic: "hom qua" → yesterday
+     └─ LlmDateRangeResolver (Order 2)        LLM fallback: "tu 1/5 den 20/5"
+  2. detectFlowFilter(text)                   — keyword-based: chi → EXPENSE
+  3. detectViewMode(text)                     — keyword-based: "mua gi" → DETAIL
+  4. TransactionService.findByRange()         — fetch data
+  5. autoAdjustViewMode(mode, count)          — DETAIL + ≤10 → COMPACT, >10 → SUMMARY
+  6. FinanceViewRenderer.render()             — Strategy per ViewMode
 ```
+
+### Date Resolution (Chain of Responsibility)
+
+`KeywordDateResolver` handles common Vietnamese date expressions deterministically:
+
+| Keyword | Resolves To |
+| --- | --- |
+| `hom nay`, `today` | `DateRange.today()` |
+| `hom qua`, `yesterday` | `DateRange.yesterday()` |
+| `hom kia` | `DateRange.daysAgo(2)` |
+| `tuan nay`, `week` | `DateRange.thisWeek()` |
+| `thang nay`, `month` | `DateRange.thisMonth()` |
+
+When keyword matching fails, `LlmDateRangeResolver` calls DeepSeek for complex date
+expressions like `"tu 1/5 den 20/5"` or `"7 ngay qua"`.
+
+### ViewMode Auto-Adjustment
+
+| Requested | Transaction Count | Effective |
+| --- | --- | --- |
+| SUMMARY | any | SUMMARY |
+| DETAIL | 0 | DETAIL (shows empty message) |
+| DETAIL | 1–10 | COMPACT (list + totals) |
+| DETAIL | >10 | SUMMARY (totals only) |
+
+### FlowFilter
 
 `FlowFilter` controls reply focus:
 
@@ -107,29 +143,6 @@ SummaryIntentHandler
 - `INCOME`: show income total only.
 
 Command summaries keep `ALL` by default. Natural-language summaries can use any filter.
-
-## Summary Date Range Rules
-
-`ParsedSummaryIntent` uses:
-
-- `from`: inclusive `Instant`.
-- `to`: exclusive `Instant`.
-- `label`: short display label from the parser.
-- `flowFilter`: `ALL`, `EXPENSE`, or `INCOME`.
-
-Examples expected from the LLM adapter:
-
-| User text | Expected intent |
-| --- | --- |
-| `hom qua tieu bao nhieu` | yesterday, `EXPENSE` |
-| `hom kia thu bao nhieu` | two days ago, `INCOME` |
-| `tu 1/5 den 20/5 chi bao nhieu` | current-year May 1 inclusive to May 21 exclusive, `EXPENSE` |
-| `7 ngay qua` | seven-day range ending tomorrow at start of day |
-| `may hom truoc thi sao` | clarification instead of guessing |
-| `hello` | no summary intent; fallback handles it |
-
-There is no repair loop. If the LLM output is malformed or invalid, the adapter returns
-`Optional.empty()`.
 
 ## Configuration
 
@@ -142,9 +155,13 @@ iom:
       summary:
         action-keywords: [...]
         today-keywords: [...]
+        yesterday-keywords: [...]
+        day-before-keywords: [...]
+        this-week-keywords: [...]
         month-keywords: [...]
         expense-keywords: [...]
         income-keywords: [...]
+        detail-keywords: [...]
 ```
 
 DeepSeek/Spring AI config uses:
@@ -174,10 +191,13 @@ Useful tests:
 - `BotCommandRouterTest`: routing continues on `false` and stops on `true`.
 - `BotCommandParserTest`: slash command normalization, including bot-name suffix.
 - `RecordTransactionHandlerTest`: transaction parse empty vs valid result.
-- `SummaryIntentHandlerTest`: deterministic rule, LLM fallback, clarification, unrelated text.
+- `ViewFinancesHandlerTest`: pipeline mock — date resolution, mode detection, rendering.
+- `KeywordDateResolverTest`: all keyword combinations, accent handling.
+- `DateRangeResolverChainTest`: chain ordering, fallback behavior.
+- `FinanceViewRendererTest`: SUMMARY, DETAIL, COMPACT output.
+- `DateRangeTest`: factory methods, validation.
+- `FinanceQueryTest`: sealed variants construction.
 - `LlmMessageInterpreterTest`: DeepSeek transaction JSON parsing.
-- `LlmSummaryIntentInterpreterTest`: DeepSeek summary intent JSON parsing.
-- `SummaryFormatterTest`: `ALL`, `EXPENSE`, `INCOME` output.
 
 Verification command:
 
