@@ -1,8 +1,9 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.nlp;
 
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.nghlong3004.iom.api.application.handler.BotMessageHandler;
 import me.nghlong3004.iom.api.application.port.out.ConversationContextStore;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
 import me.nghlong3004.iom.api.common.AmountFormatter;
@@ -24,7 +25,7 @@ import org.springframework.stereotype.Component;
 /**
  * Handles transaction management operations: delete, update, undo, confirm, cancel.
  *
- * <p>Placed between {@link RecordTransactionHandler} (50) and {@code ViewFinancesHandler} (80). If
+ * <p>Placed between {@link RecordTransactionHandler} (50) and {@link ViewFinancesHandler} (80). If
  * the context is awaiting confirmation, this handler intercepts "ok"/"hủy" messages. Otherwise, it
  * attempts to parse management actions from the user's text.
  *
@@ -35,7 +36,7 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(60)
 @RequiredArgsConstructor
-public class ManageTransactionHandler implements BotCommandHandler {
+public class ManageTransactionHandler implements BotMessageHandler {
 
   private final ActionResolverChain actionResolverChain;
   private final ConversationContextStore contextStore;
@@ -60,30 +61,30 @@ public class ManageTransactionHandler implements BotCommandHandler {
 
     // 2. Try to parse management action
     var action = actionResolverChain.resolve(message.normalizedText());
-    if (action.isEmpty()) {
-      return false;
-    }
-
-    return switch (action.get()) {
-      case TransactionAction.Delete d -> handleDelete(d, message, context);
-      case TransactionAction.Update u -> handleUpdate(u, message, context);
-      case TransactionAction.Undo u -> handleUndo(message, context);
-      case TransactionAction.Confirm c -> false; // no pending action
-      case TransactionAction.Cancel c -> false; // no pending action
-    };
+    return action
+        .map(
+            transactionAction ->
+                switch (transactionAction) {
+                  case TransactionAction.Delete delete -> handleDelete(delete, message, context);
+                  case TransactionAction.Update update -> handleUpdate(update, message, context);
+                  case TransactionAction.Undo undo -> handleUndo(message, context);
+                  case TransactionAction.Confirm confirm -> false;
+                  case TransactionAction.Cancel cancel -> false;
+                })
+        .orElse(false);
   }
 
   private boolean handleConfirmationResponse(IncomingMessage message, ConversationContext context) {
     var confirmOrCancel = actionResolverChain.resolve(message.normalizedText());
-    if (confirmOrCancel.isEmpty()) {
-      return false;
-    }
-
-    return switch (confirmOrCancel.get()) {
-      case TransactionAction.Confirm c -> executeConfirm(message, context);
-      case TransactionAction.Cancel c -> executeCancel(message, context);
-      default -> false; // other actions don't apply during confirmation
-    };
+    return confirmOrCancel
+        .map(
+            transactionAction ->
+                switch (transactionAction) {
+                  case TransactionAction.Confirm confirm -> executeConfirm(message, context);
+                  case TransactionAction.Cancel cancel -> executeCancel(message, context);
+                  default -> false; // other actions don't apply during confirmation
+                })
+        .orElse(false);
   }
 
   private boolean handleDelete(

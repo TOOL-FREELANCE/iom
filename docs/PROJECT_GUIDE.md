@@ -49,7 +49,9 @@ channel/telegram/            External Adapter (inbound)
         │
 application/usecase/         Use Case orchestration
         │
-application/command/         Strategy routing (BotCommandHandler implementations)
+application/handler/         Message routing (BotMessageHandler implementations)
+  ├── command/               Slash-command handlers (/start, /help, /today, /month)
+  └── nlp/                   NLP / free-text handlers (record, manage, view, fallback)
         │
   ┌─────┴─────┐
   │            │
@@ -87,7 +89,7 @@ sequenceDiagram
     participant Disp as TelegramUpdateDispatcher
     participant Map as TelegramMessageMapper
     participant UC as HandleIncomingMessageUseCase
-    participant Router as BotCommandRouter
+    participant Router as BotMessageRouter
     participant RH as RecordTransactionHandler
     participant MI as MessageInterpreter (LLM)
     participant UR as UserResolver
@@ -111,22 +113,21 @@ sequenceDiagram
     Sender->>User: "Đã ghi nhận: Chi 30.000đ cho ăn sáng."
 ```
 
-### 3.3 Command Handler Chain (Strategy Pattern)
+### 3.3 Message Handler Chain (Strategy Pattern)
 
 Handlers are matched in `@Order` priority. A handler returns `true` when it handled the
 message and `false` when the router should continue to the next matching handler.
 
-| Order | Handler | Matches |
-|-------|---------|---------|
-| 1 | `StartCommandHandler` | `/start` |
-| 2 | `HelpCommandHandler` | `/help` |
-| 3 | `TodaySummaryHandler` | `/today` |
-| 4 | `MonthSummaryHandler` | `/month` |
-| 10 | `UnknownCommandHandler` | Any unrecognized `/command` |
-| 50 | `RecordTransactionHandler` | Non-command text with financial data |
-| 60 | `ManageTransactionHandler` | Delete / update / undo / confirm / cancel |
-| 80 | `ViewFinancesHandler` | Natural-language summary/history requests (pipeline) |
-| 99 | `EchoMessageHandler` | Any remaining text (fallback guidance) |
+| Order | Package | Handler | Matches |
+|-------|---------|---------|--------|
+| 1 | `handler/command` | `StartCommandHandler` | `/start` |
+| 2 | `handler/command` | `HelpCommandHandler` | `/help` |
+| 3 | `handler/command` | `SummaryCommandHandler` | `/today`, `/month` (unified via `BotCommand` enum) |
+| 98 | `handler/command` | `UnknownCommandHandler` | Any unrecognized `/command` |
+| 50 | `handler/nlp` | `RecordTransactionHandler` | Non-command text with financial data |
+| 60 | `handler/nlp` | `ManageTransactionHandler` | Delete / update / undo / confirm / cancel |
+| 80 | `handler/nlp` | `ViewFinancesHandler` | Natural-language summary/history requests (pipeline) |
+| 99 | `handler/nlp` | `EchoMessageHandler` | Any remaining text (fallback guidance) |
 
 `RecordTransactionHandler` calls `MessageInterpreter.interpret()`. If the LLM returns empty
 (not a financial message), it returns `false`, letting the router fall through to
@@ -188,14 +189,16 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 |----------|-----------|
 | **LLM for parsing** (not regex) | Core parsing delegated to LLM via `MessageInterpreter` port. Handles Vietnamese natural language, multiple currencies, relative dates — far more robust than regex. |
 | **DeepSeek via Spring AI** | Transaction parsing and LLM date resolution use Spring AI `ChatModel` with DeepSeek. Provider-specific types stay inside service adapters. |
-| **Bot handlers return boolean** | `BotCommandHandler.handle()` returns `true` when handled and `false` when routing should continue. This lets transaction parsing fall through to finance view and fallback replies. |
+| **Bot handlers return boolean** | `BotMessageHandler.handle()` returns `true` when handled and `false` when routing should continue. This lets transaction parsing fall through to finance view and fallback replies. |
 | **Query Pipeline Architecture** | `ViewFinancesHandler` uses a 4-stage pipeline: DateRange resolution → FlowFilter/ViewMode detection → data fetching → rendering. Each stage follows SRP. |
 | **Chain of Responsibility** | `DateRangeResolver` chain: `KeywordDateResolver` (deterministic, Order 1) → `LlmDateRangeResolver` (LLM fallback, Order 2). Add new resolvers by implementing `DateRangeResolver` with a new `@Order`. |
 | **Sealed `FinanceQuery`** | `FinanceQuery.View` and `FinanceQuery.Clarification` — compiler-enforced exhaustive switch handling (Java 21). |
 | **`DateRange` Value Object** | Immutable record with factory methods (`today()`, `yesterday()`, `daysAgo()`, `thisWeek()`, `thisMonth()`, `custom()`). Replaces scattered `Instant from/to` pairs. |
 | **ViewMode auto-adjustment** | DETAIL with ≤10 transactions → COMPACT (list + totals). DETAIL with >10 → SUMMARY. Keeps Telegram replies readable. |
 | **Category emoji** | `Category` enum has `emoji` field for detail view rendering (e.g., 🍜 FOOD, 🚗 TRANSPORT). |
-| **Strategy Pattern** | Applied to command routing (`BotCommandHandler`), message interpretation (`MessageInterpreter`), user resolution (`UserResolver`), and finance view rendering (`FinanceViewRenderer`). |
+| **Strategy Pattern** | Applied to message routing (`BotMessageHandler`), message interpretation (`MessageInterpreter`), user resolution (`UserResolver`), and finance view rendering (`FinanceViewRenderer`). |
+| **Handler sub-packages** | Slash-command handlers live in `handler/command/`, NLP/free-text handlers in `handler/nlp/`. Shared interface (`BotMessageHandler`) and router (`BotMessageRouter`) live in the root `handler/` package. |
+| **Unified summary handler** | `SummaryCommandHandler` replaces separate `TodaySummaryHandler`/`MonthSummaryHandler`. `BotCommand` enum carries a `DateRange` factory — adding `/week` requires only a new enum constant, no new handler class. |
 | **MapStruct** for all mapping | No manual `new Entity(...)` for cross-layer conversions. Consistent with existing `TelegramMessageMapper`. Mappers: `TransactionMapper`, `UserMapper`. |
 | **Multi-currency** from day one | `Currency` enum with formatting metadata (`symbol`, `groupSeparator`, `minorUnits`). Amounts stored in smallest unit. `AmountFormatter` is currency-aware. |
 | **ConversationContext** | Per-user stateful session tracking `lastRecordedTransactionId`, `lastViewedTransactionIds`, and `pendingAction`. Platform-agnostic — same context works for Telegram, Web, Zalo. State Pattern: `IDLE → AWAITING_CONFIRMATION → IDLE`. |
@@ -223,17 +226,18 @@ Three tables managed by Flyway migrations in `api/src/main/resources/db/migratio
 | File | Purpose |
 |------|---------|
 | [HandleIncomingMessageUseCase.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/usecase/HandleIncomingMessageUseCase.java) | Orchestrates message handling |
-| [BotCommandRouter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/BotCommandRouter.java) | Routes to first matching handler |
-| [BotCommand.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/BotCommand.java) | Enum: START, HELP, TODAY, MONTH |
-| [BotCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/BotCommandHandler.java) | Strategy interface: `supports()` + `handle()` |
-| [StartCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/StartCommandHandler.java) | /start welcome |
-| [HelpCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/HelpCommandHandler.java) | /help guide |
-| [TodaySummaryHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/TodaySummaryHandler.java) | /today — uses DateRange.today() + FinanceViewRenderer |
-| [MonthSummaryHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/MonthSummaryHandler.java) | /month — uses DateRange.thisMonth() + FinanceViewRenderer |
-| [ViewFinancesHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/ViewFinancesHandler.java) | Natural-language summary/history — pipeline architecture |
-| [RecordTransactionHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/RecordTransactionHandler.java) | Parses financial messages, records transactions |
-| [EchoMessageHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/EchoMessageHandler.java) | Fallback: guidance text for unrecognized input |
-| [UnknownCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/command/UnknownCommandHandler.java) | Catches unrecognized slash commands |
+| [BotMessageHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/BotMessageHandler.java) | Strategy interface: `supports()` + `handle()` |
+| [BotMessageRouter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/BotMessageRouter.java) | Routes to first matching handler |
+| [BotCommand.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/command/BotCommand.java) | Enum: START, HELP, TODAY, MONTH (with DateRange factory) |
+| [BotCommandParser.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/command/BotCommandParser.java) | Normalizes slash commands, strips bot-name suffix |
+| [StartCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/command/StartCommandHandler.java) | /start welcome |
+| [HelpCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/command/HelpCommandHandler.java) | /help guide |
+| [SummaryCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/command/SummaryCommandHandler.java) | /today, /month — unified summary via BotCommand enum factory |
+| [UnknownCommandHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/command/UnknownCommandHandler.java) | Catches unrecognized slash commands |
+| [RecordTransactionHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/nlp/RecordTransactionHandler.java) | Parses financial messages, records transactions |
+| [ManageTransactionHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/nlp/ManageTransactionHandler.java) | Delete / update / undo / confirm / cancel |
+| [ViewFinancesHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/nlp/ViewFinancesHandler.java) | Natural-language summary/history — pipeline architecture |
+| [EchoMessageHandler.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/handler/nlp/EchoMessageHandler.java) | Fallback: guidance text for unrecognized input |
 | [MessageInterpreter.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/port/out/MessageInterpreter.java) | Port: natural language → ParsedTransaction |
 | [DateRangeResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/port/out/DateRangeResolver.java) | Port: text → Optional\<DateRange\> (Chain of Responsibility) |
 | [UserResolver.java](file:///d:/Long/project/iom/api/src/main/java/me/nghlong3004/iom/api/application/port/out/UserResolver.java) | Port: IncomingMessage → AppUser |
@@ -352,6 +356,7 @@ cd api
 | **LLM transaction parsing** | Done | `LlmMessageInterpreter` uses Spring AI `ChatModel` with DeepSeek and returns empty on invalid, failed, or non-transaction responses. |
 | **Query Pipeline Architecture** | Done | `ViewFinancesHandler` with `DateRangeResolverChain` (keyword + LLM), `FinanceViewRenderer` (SUMMARY/DETAIL/COMPACT), `ViewMode` auto-adjustment. |
 | **Transaction history/detail view** | Done | Users can ask "hôm qua mua gì" to see individual transactions with emoji categories. |
-| **Unit tests** | Done | 135 unit tests passing. Integration tests use Testcontainers and may skip without Docker. |
+| **Handler reorganization** | Done | `application/command/` → `application/handler/` with `command/` and `nlp/` sub-packages. `BotCommandHandler` → `BotMessageHandler`. `TodaySummaryHandler` + `MonthSummaryHandler` merged into `SummaryCommandHandler`. |
+| **Unit tests** | Done | 186 unit tests passing. Integration tests use Testcontainers and may skip without Docker. |
 | **Web dashboard** | Phase 2 | React client in `client/` directory. OAuth2 login flow partially prepared in `oauth/` package. |
 | **OCR receipt scanning** | Phase 3+ | Per BRIEF.md roadmap. |

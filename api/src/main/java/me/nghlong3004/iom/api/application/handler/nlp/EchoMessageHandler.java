@@ -1,6 +1,7 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.nlp;
 
 import lombok.RequiredArgsConstructor;
+import me.nghlong3004.iom.api.application.handler.BotMessageHandler;
 import me.nghlong3004.iom.api.common.BotMessages;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
@@ -9,25 +10,27 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
+ * Fallback handler — sends guidance text for any unrecognized free-text input.
+ *
  * @author nghlong3004 (Nguyen Hoang Long)
  * @since 5/23/2026
  */
 @Component
-@Order(98)
+@Order(99)
 @RequiredArgsConstructor
-public class UnknownCommandHandler implements BotCommandHandler {
+public class EchoMessageHandler implements BotMessageHandler {
 
   private final MessageSender messageSender;
   private final BotMessages botMessages;
 
   @Override
   public boolean supports(IncomingMessage message) {
-    return message.isCommand();
+    return message.hasText();
   }
 
   @Override
   public boolean handle(IncomingMessage message) {
-    messageSender.send(OutgoingMessage.replyTo(message, botMessages.unknownCommandMessage()));
+    messageSender.send(OutgoingMessage.replyTo(message, botMessages.fallbackMessage()));
     return true;
   }
 }

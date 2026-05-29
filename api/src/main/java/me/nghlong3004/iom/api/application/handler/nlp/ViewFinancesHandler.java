@@ -1,8 +1,9 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.nlp;
 
 import java.text.Normalizer;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import me.nghlong3004.iom.api.application.handler.BotMessageHandler;
 import me.nghlong3004.iom.api.application.port.out.ConversationContextStore;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
 import me.nghlong3004.iom.api.common.FinanceViewRenderer;
@@ -29,15 +30,13 @@ import org.springframework.stereotype.Component;
  *   <li>Render via {@link FinanceViewRenderer}
  * </ol>
  *
- * <p>Replaces {@code SummaryIntentHandler} with pipeline-based design following SRP.
- *
  * @author nghlong3004 (Nguyen Hoang Long)
  * @since 5/27/2026
  */
 @Component
 @Order(80)
 @RequiredArgsConstructor
-public class ViewFinancesHandler implements BotCommandHandler {
+public class ViewFinancesHandler implements BotMessageHandler {
 
   private static final int COMPACT_THRESHOLD = 10;
 

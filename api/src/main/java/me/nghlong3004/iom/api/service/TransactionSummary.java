@@ -25,10 +25,10 @@ public record TransactionSummary(Map<Currency, CurrencyTotal> totals, int transa
                     Transaction::getCurrency,
                     Collectors.teeing(
                         Collectors.filtering(
-                            tx -> tx.getType() == TransactionType.INCOME,
+                            transaction -> transaction.getType() == TransactionType.INCOME,
                             Collectors.summingLong(Transaction::getAmount)),
                         Collectors.filtering(
-                            tx -> tx.getType() == TransactionType.EXPENSE,
+                            transaction -> transaction.getType() == TransactionType.EXPENSE,
                             Collectors.summingLong(Transaction::getAmount)),
                         CurrencyTotal::new)));
 

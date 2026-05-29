@@ -1,7 +1,8 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.nlp;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import me.nghlong3004.iom.api.application.handler.BotMessageHandler;
 import me.nghlong3004.iom.api.application.port.out.ConversationContextStore;
 import me.nghlong3004.iom.api.application.port.out.MessageInterpreter;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
@@ -19,7 +20,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>Ordered at 50 — after slash-command handlers (1-10), before echo fallback (99). If the
  * interpreter returns empty, this handler exits silently, allowing the router to fall through to
- * {@link EchoMessageHandler}.
+ * {@link ManageTransactionHandler}, then {@link ViewFinancesHandler}, then {@link
+ * EchoMessageHandler}.
  *
  * @author nghlong3004 (Nguyen Hoang Long)
  * @since 5/24/2026
@@ -28,7 +30,7 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(50)
 @RequiredArgsConstructor
-public class RecordTransactionHandler implements BotCommandHandler {
+public class RecordTransactionHandler implements BotMessageHandler {
 
   private final MessageInterpreter messageInterpreter;
   private final UserResolver userResolver;

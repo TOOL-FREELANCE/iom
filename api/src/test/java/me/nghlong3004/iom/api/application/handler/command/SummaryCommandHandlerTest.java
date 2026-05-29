@@ -1,4 +1,4 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -25,21 +25,32 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@DisplayName("TodaySummaryHandler Unit Tests")
+/**
+ * Tests the unified {@link SummaryCommandHandler} that handles all summary slash commands
+ * ({@code /today}, {@code /month}).
+ *
+ * @author nghlong3004 (Nguyen Hoang Long)
+ * @since 5/29/2026
+ */
+@DisplayName("SummaryCommandHandler Unit Tests")
 @ExtendWith(MockitoExtension.class)
-class TodaySummaryHandlerTest {
+class SummaryCommandHandlerTest {
 
   @Mock private UserResolver userResolver;
   @Mock private TransactionService transactionService;
   @Mock private MessageSender messageSender;
   @Mock private FinanceViewRenderer renderer;
 
-  @InjectMocks private TodaySummaryHandler handler;
+  @InjectMocks private SummaryCommandHandler handler;
 
   private final IncomingMessage todayCommand =
       new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "/today");
-  private final IncomingMessage otherCommand =
+  private final IncomingMessage monthCommand =
+      new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "/month");
+  private final IncomingMessage helpCommand =
       new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "/help");
+  private final IncomingMessage textMessage =
+      new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hom nay");
 
   @Test
   @DisplayName("Should support /today command")
@@ -48,13 +59,25 @@ class TodaySummaryHandlerTest {
   }
 
   @Test
-  @DisplayName("Should not support other commands")
-  void supports_OtherCommand_ReturnsFalse() {
-    assertThat(handler.supports(otherCommand)).isFalse();
+  @DisplayName("Should support /month command")
+  void supports_MonthCommand_ReturnsTrue() {
+    assertThat(handler.supports(monthCommand)).isTrue();
   }
 
   @Test
-  @DisplayName("Should handle /today and send reply")
+  @DisplayName("Should not support non-summary commands")
+  void supports_HelpCommand_ReturnsFalse() {
+    assertThat(handler.supports(helpCommand)).isFalse();
+  }
+
+  @Test
+  @DisplayName("Should not support non-command text")
+  void supports_TextMessage_ReturnsFalse() {
+    assertThat(handler.supports(textMessage)).isFalse();
+  }
+
+  @Test
+  @DisplayName("Should handle /today and send summary reply")
   void handle_TodayCommand_SendsReply() {
     var user = AppUser.builder().id(1L).build();
     given(userResolver.resolve(todayCommand)).willReturn(user);
@@ -69,9 +92,17 @@ class TodaySummaryHandlerTest {
   }
 
   @Test
-  @DisplayName("Should not support non-command text")
-  void supports_TextMessage_ReturnsFalse() {
-    var text = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hom nay");
-    assertThat(handler.supports(text)).isFalse();
+  @DisplayName("Should handle /month and send summary reply")
+  void handle_MonthCommand_SendsReply() {
+    var user = AppUser.builder().id(1L).build();
+    given(userResolver.resolve(monthCommand)).willReturn(user);
+    given(transactionService.findByRange(eq(user), any())).willReturn(List.of());
+    given(renderer.render(any(), eq(ViewMode.SUMMARY), anyList(), any(), eq(FlowFilter.ALL)))
+        .willReturn("Tháng 5/2026: Chưa có giao dịch.");
+
+    var result = handler.handle(monthCommand);
+
+    assertThat(result).isTrue();
+    then(messageSender).should().send(any(OutgoingMessage.class));
   }
 }

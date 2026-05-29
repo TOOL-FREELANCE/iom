@@ -1,4 +1,4 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.command;
 
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 

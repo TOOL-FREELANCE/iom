@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.user.AppUser;
+import me.nghlong3004.iom.api.domain.user.ExternalAccount;
 import me.nghlong3004.iom.api.repository.AppUserRepository;
 import me.nghlong3004.iom.api.repository.ExternalAccountRepository;
 import me.nghlong3004.iom.api.service.mapper.UserMapper;
@@ -38,7 +39,7 @@ public class DefaultUserResolver implements UserResolver {
 
     return externalAccountRepository
         .findByPlatformAndExternalUserId(platform, externalUserId)
-        .map(account -> account.getUser())
+        .map(ExternalAccount::getUser)
         .orElseGet(
             () -> {
               var newUser = userMapper.toNewAppUser();

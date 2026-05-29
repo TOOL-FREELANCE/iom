@@ -1,5 +1,6 @@
 package me.nghlong3004.iom.api.service.mapper;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import me.nghlong3004.iom.api.domain.MessageChannel;
@@ -31,9 +32,9 @@ public interface TransactionMapper {
   Transaction toEntity(
       AppUser user, ParsedTransaction parsed, MessageChannel source, String rawInput);
 
-  default java.time.Instant mapLocalDateToInstant(LocalDate date) {
+  default Instant mapLocalDateToInstant(LocalDate date) {
     if (date == null) {
-      return java.time.Instant.now();
+      return Instant.now();
     }
     return date.atStartOfDay(ZoneId.systemDefault()).toInstant();
   }

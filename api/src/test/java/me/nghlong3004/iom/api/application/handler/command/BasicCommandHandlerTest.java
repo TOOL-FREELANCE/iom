@@ -1,4 +1,4 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
@@ -9,6 +9,7 @@ import me.nghlong3004.iom.api.domain.MessageChannel;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
+import me.nghlong3004.iom.api.application.handler.nlp.EchoMessageHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -139,4 +140,3 @@ class BasicCommandHandlerTest {
     assertThat(captor.getValue().text()).isEqualTo(expectedText);
   }
 }
-

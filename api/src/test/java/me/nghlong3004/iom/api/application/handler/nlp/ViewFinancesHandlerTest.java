@@ -1,4 +1,4 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler.nlp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,25 +14,22 @@ import me.nghlong3004.iom.api.application.port.out.ConversationContextStore;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
 import me.nghlong3004.iom.api.common.FinanceViewRenderer;
 import me.nghlong3004.iom.api.config.BotIntentProperties;
+import me.nghlong3004.iom.api.domain.MessageChannel;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
-import me.nghlong3004.iom.api.domain.MessageChannel;
 import me.nghlong3004.iom.api.domain.summary.DateRange;
 import me.nghlong3004.iom.api.domain.summary.FlowFilter;
 import me.nghlong3004.iom.api.domain.summary.ViewMode;
 import me.nghlong3004.iom.api.domain.user.AppUser;
 import me.nghlong3004.iom.api.service.DateRangeResolverChain;
 import me.nghlong3004.iom.api.service.TransactionService;
-import me.nghlong3004.iom.api.service.TransactionSummary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
 
 @DisplayName("ViewFinancesHandler Unit Tests")
 @ExtendWith(MockitoExtension.class)

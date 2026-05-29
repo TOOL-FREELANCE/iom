@@ -1,7 +1,7 @@
 # Bot Flow And Intent Handling
 
 This document is the quick handover for the current Telegram bot behavior.
-Read this before opening the command handler classes.
+Read this before opening the message handler classes.
 
 ## Current Scope
 
@@ -33,8 +33,8 @@ Telegram update
   -> TelegramUpdateDispatcher
   -> TelegramMessageMapper
   -> HandleIncomingMessageUseCase
-  -> BotCommandRouter
-  -> ordered BotCommandHandler chain
+  -> BotMessageRouter
+  -> ordered BotMessageHandler chain
   -> MessageSender reply
 ```
 
@@ -50,17 +50,16 @@ and then fallback.
 
 ## Handler Order
 
-| Order | Handler | Purpose |
-| --- | --- | --- |
-| `1` | `StartCommandHandler` | `/start` welcome message |
-| `2` | `HelpCommandHandler` | `/help` usage message |
-| `3` | `TodaySummaryHandler` | `/today` command summary |
-| `4` | `MonthSummaryHandler` | `/month` command summary |
-| `10` | `UnknownCommandHandler` | unknown slash commands |
-| `50` | `RecordTransactionHandler` | non-command transaction recording |
-| `60` | `ManageTransactionHandler` | delete / update / undo / confirm / cancel |
-| `80` | `ViewFinancesHandler` | natural-language summary/history intent |
-| `99` | `EchoMessageHandler` | fallback guidance |
+| Order | Package | Handler | Purpose |
+| --- | --- | --- | --- |
+| `1` | `handler/command` | `StartCommandHandler` | `/start` welcome message |
+| `2` | `handler/command` | `HelpCommandHandler` | `/help` usage message |
+| `3` | `handler/command` | `SummaryCommandHandler` | `/today`, `/month` summary (unified) |
+| `98` | `handler/command` | `UnknownCommandHandler` | unknown slash commands |
+| `50` | `handler/nlp` | `RecordTransactionHandler` | non-command transaction recording |
+| `60` | `handler/nlp` | `ManageTransactionHandler` | delete / update / undo / confirm / cancel |
+| `80` | `handler/nlp` | `ViewFinancesHandler` | natural-language summary/history intent |
+| `99` | `handler/nlp` | `EchoMessageHandler` | fallback guidance |
 
 ## Transaction Recording
 
@@ -68,7 +67,7 @@ Key files:
 
 - `application/port/out/MessageInterpreter.java`
 - `service/LlmMessageInterpreter.java`
-- `application/command/RecordTransactionHandler.java`
+- `application/handler/nlp/RecordTransactionHandler.java`
 - `service/TransactionService.java`
 - `common/ConfirmationFormatter.java`
 
@@ -99,7 +98,7 @@ Key files:
 - `service/KeywordDateResolver.java` — deterministic keyword matcher (Order 1)
 - `service/LlmDateRangeResolver.java` — LLM fallback (Order 2)
 - `service/DateRangeResolverChain.java` — chain orchestrator
-- `application/command/ViewFinancesHandler.java` — pipeline handler
+- `application/handler/nlp/ViewFinancesHandler.java` — pipeline handler
 - `common/FinanceViewRenderer.java` — multi-mode renderer
 - `config/BotIntentProperties.java` — keyword config
 
@@ -164,7 +163,7 @@ Key files:
 - `service/InMemoryConversationContextStore.java` — in-memory adapter (30min TTL)
 - `service/KeywordActionResolver.java` — deterministic keyword matcher (Order 1)
 - `service/ActionResolverChain.java` — chain orchestrator
-- `application/command/ManageTransactionHandler.java` — handler (Order 60)
+- `application/handler/nlp/ManageTransactionHandler.java` — handler (Order 60)
 
 ### Conversation Flow
 
@@ -256,17 +255,19 @@ adapters may stay in Java because it is not sent directly as a bot reply.
 
 Useful tests:
 
-- `BotCommandRouterTest`: routing continues on `false` and stops on `true`.
-- `BotCommandParserTest`: slash command normalization, including bot-name suffix.
-- `RecordTransactionHandlerTest`: transaction parse empty vs valid result.
-- `ViewFinancesHandlerTest`: pipeline mock — date resolution, mode detection, rendering.
+- `BotMessageRouterTest` (handler/): routing continues on `false` and stops on `true`.
+- `BotCommandParserTest` (handler/command/): slash command normalization, including bot-name suffix.
+- `BasicCommandHandlerTest` (handler/command/): start, help, unknown, echo handler behavior.
+- `SummaryCommandHandlerTest` (handler/command/): unified /today and /month handler.
+- `RecordTransactionHandlerTest` (handler/nlp/): transaction parse empty vs valid result.
+- `ManageTransactionHandlerTest` (handler/nlp/): delete/update/undo, confirm/cancel, ByIndex.
+- `ViewFinancesHandlerTest` (handler/nlp/): pipeline mock — date resolution, mode detection, rendering.
 - `KeywordDateResolverTest`: all keyword combinations, accent handling.
 - `DateRangeResolverChainTest`: chain ordering, fallback behavior.
 - `FinanceViewRendererTest`: SUMMARY, DETAIL, COMPACT output.
 - `DateRangeTest`: factory methods, validation.
 - `FinanceQueryTest`: sealed variants construction.
 - `LlmMessageInterpreterTest`: DeepSeek transaction JSON parsing.
-- `ManageTransactionHandlerTest`: delete/update/undo, confirm/cancel, ByIndex.
 - `KeywordActionResolverTest`: all action keyword combos, accent handling.
 - `ActionResolverChainTest`: chain ordering, fallback.
 - `ConversationContextTest`: state transitions, index resolution.

@@ -72,7 +72,7 @@ public class SecurityConfig {
   private final ProviderAwareOAuth2UserService providerAwareOAuth2UserService;
 
   @Bean
-  public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+  public SecurityFilterChain filterChain(HttpSecurity http) {
     http.csrf(
             csrf ->
                 csrf.ignoringRequestMatchers(INTERNAL_PATHS)

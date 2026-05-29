@@ -1,10 +1,12 @@
 package me.nghlong3004.iom.api.service;
 
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import me.nghlong3004.iom.api.domain.user.AppUser;
 import me.nghlong3004.iom.api.exception.ErrorCode;
 import me.nghlong3004.iom.api.exception.ResourceException;
 import me.nghlong3004.iom.api.repository.AppUserRepository;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -12,8 +14,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 /**
  * @author nghlong3004 (Nguyen Hoang Long)
@@ -27,7 +27,7 @@ public class CustomUserDetailsService implements UserDetailsService {
   private final AppUserRepository appUserRepository;
 
   @Override
-  public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+  public @NonNull UserDetails loadUserByUsername(@NonNull String email) throws UsernameNotFoundException {
     AppUser appUser =
         appUserRepository
             .findByEmail(email)

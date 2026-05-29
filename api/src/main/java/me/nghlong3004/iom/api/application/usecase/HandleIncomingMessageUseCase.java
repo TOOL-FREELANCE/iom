@@ -1,7 +1,7 @@
 package me.nghlong3004.iom.api.application.usecase;
 
 import lombok.RequiredArgsConstructor;
-import me.nghlong3004.iom.api.application.command.BotCommandRouter;
+import me.nghlong3004.iom.api.application.handler.BotMessageRouter;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import org.springframework.stereotype.Service;
 
@@ -13,9 +13,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class HandleIncomingMessageUseCase {
 
-  private final BotCommandRouter commandRouter;
+  private final BotMessageRouter messageRouter;
 
   public void handle(IncomingMessage message) {
-    commandRouter.route(message);
+    messageRouter.route(message);
   }
 }

@@ -1,4 +1,4 @@
-package me.nghlong3004.iom.api.application.command;
+package me.nghlong3004.iom.api.application.handler;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -18,17 +18,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * @since 5/26/2026
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("BotCommandRouter Unit Tests")
-class BotCommandRouterTest {
+@DisplayName("BotMessageRouter Unit Tests")
+class BotMessageRouterTest {
 
-  @Mock private BotCommandHandler firstHandler;
-  @Mock private BotCommandHandler secondHandler;
+  @Mock private BotMessageHandler firstHandler;
+  @Mock private BotMessageHandler secondHandler;
 
   @Test
   @DisplayName("Should continue to next handler when matched handler returns false")
   void route_FirstHandlerReturnsFalse_ContinuesToNextHandler() {
     var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
-    var router = new BotCommandRouter(List.of(firstHandler, secondHandler));
+    var router = new BotMessageRouter(List.of(firstHandler, secondHandler));
     given(firstHandler.supports(message)).willReturn(true);
     given(firstHandler.handle(message)).willReturn(false);
     given(secondHandler.supports(message)).willReturn(true);
@@ -44,7 +44,7 @@ class BotCommandRouterTest {
   @DisplayName("Should stop when first matching handler handles message")
   void route_FirstHandlerReturnsTrue_StopsRouting() {
     var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "/help");
-    var router = new BotCommandRouter(List.of(firstHandler, secondHandler));
+    var router = new BotMessageRouter(List.of(firstHandler, secondHandler));
     given(firstHandler.supports(message)).willReturn(true);
     given(firstHandler.handle(message)).willReturn(true);
 
@@ -58,7 +58,7 @@ class BotCommandRouterTest {
   @DisplayName("Should skip handler when supports returns false")
   void route_HandlerNotSupports_SkipsToNextHandler() {
     var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
-    var router = new BotCommandRouter(List.of(firstHandler, secondHandler));
+    var router = new BotMessageRouter(List.of(firstHandler, secondHandler));
     given(firstHandler.supports(message)).willReturn(false);
     given(secondHandler.supports(message)).willReturn(true);
     given(secondHandler.handle(message)).willReturn(true);
@@ -73,7 +73,7 @@ class BotCommandRouterTest {
   @DisplayName("Should throw IllegalStateException when no handler handles the message")
   void route_NoHandlerHandles_ThrowsIllegalStateException() {
     var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
-    var router = new BotCommandRouter(List.of(firstHandler));
+    var router = new BotMessageRouter(List.of(firstHandler));
     given(firstHandler.supports(message)).willReturn(true);
     given(firstHandler.handle(message)).willReturn(false);
 

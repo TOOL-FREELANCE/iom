@@ -81,7 +81,7 @@ public class Transaction {
   /**
    * Applies partial changes from the given {@link UpdateFields}. Only non-null fields are updated.
    */
-  public void applyChanges(me.nghlong3004.iom.api.domain.transaction.UpdateFields changes) {
+  public void applyChanges(UpdateFields changes) {
     if (changes.amount() != null) {
       this.amount = changes.amount();
     }

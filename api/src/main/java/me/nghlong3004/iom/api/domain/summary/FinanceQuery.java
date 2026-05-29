@@ -1,5 +1,7 @@
 package me.nghlong3004.iom.api.domain.summary;
 
+import java.util.Objects;
+
 /**
  * Sealed hierarchy representing a fully-parsed finance query from user input.
  *
@@ -22,7 +24,7 @@ public sealed interface FinanceQuery {
       implements FinanceQuery {
 
     public View {
-      java.util.Objects.requireNonNull(dateRange, "dateRange is required");
+      Objects.requireNonNull(dateRange, "dateRange is required");
       if (flowFilter == null) {
         flowFilter = FlowFilter.ALL;
       }
