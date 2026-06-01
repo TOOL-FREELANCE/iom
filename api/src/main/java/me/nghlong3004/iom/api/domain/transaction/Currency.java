@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum Currency {
-  VND("d", ".", 0),
+  VND("\u0111", ".", 0),
   USD("$", ",", 2),
   EUR("\u20AC", ",", 2),
   JPY("\u00A5", ",", 0),

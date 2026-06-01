@@ -34,12 +34,12 @@ class ConfirmationFormatterTest {
         new ParsedTransaction(
             TransactionType.EXPENSE, 30000L, Currency.VND, Category.FOOD, "an sang", null);
     given(botMessages.typeLabel(false)).willReturn("Chi");
-    given(botMessages.transactionRecorded("Chi", "30.000d", "an sang"))
-        .willReturn("Da ghi nhan: Chi 30.000d cho an sang.");
+    given(botMessages.transactionRecorded("Chi", "30.000đ", "an sang"))
+        .willReturn("Da ghi nhan: Chi 30.000đ cho an sang.");
 
     var result = formatter.format(parsed);
 
-    assertThat(result).isEqualTo("Da ghi nhan: Chi 30.000d cho an sang.");
+    assertThat(result).isEqualTo("Da ghi nhan: Chi 30.000đ cho an sang.");
   }
 
   @Test
@@ -48,12 +48,12 @@ class ConfirmationFormatterTest {
     var parsed =
         new ParsedTransaction(TransactionType.INCOME, 5000000L, Currency.VND, Category.SALARY, "", null);
     given(botMessages.typeLabel(true)).willReturn("Thu");
-    given(botMessages.transactionRecorded("Thu", "5.000.000d", ""))
-        .willReturn("Da ghi nhan: Thu 5.000.000d.");
+    given(botMessages.transactionRecorded("Thu", "5.000.000đ", ""))
+        .willReturn("Da ghi nhan: Thu 5.000.000đ.");
 
     var result = formatter.format(parsed);
 
-    assertThat(result).isEqualTo("Da ghi nhan: Thu 5.000.000d.");
+    assertThat(result).isEqualTo("Da ghi nhan: Thu 5.000.000đ.");
   }
 
   @Test
@@ -68,10 +68,10 @@ class ConfirmationFormatterTest {
     given(botMessages.transactionRecordedBatchHeader(2)).willReturn("Da ghi nhan 2 giao dich:");
     given(botMessages.typeLabel(false)).willReturn("Chi");
     given(botMessages.typeLabel(true)).willReturn("Thu");
-    given(botMessages.transactionRecordedBatchLine(1, "Chi", "30.000d", "an sang"))
-        .willReturn("1. Chi 30.000d - an sang");
-    given(botMessages.transactionRecordedBatchLine(2, "Thu", "5.000.000d", "luong"))
-        .willReturn("2. Thu 5.000.000d - luong");
+    given(botMessages.transactionRecordedBatchLine(1, "Chi", "30.000đ", "an sang"))
+        .willReturn("1. Chi 30.000đ - an sang");
+    given(botMessages.transactionRecordedBatchLine(2, "Thu", "5.000.000đ", "luong"))
+        .willReturn("2. Thu 5.000.000đ - luong");
 
     var result = formatter.formatBatch(List.of(first, second));
 
@@ -79,8 +79,8 @@ class ConfirmationFormatterTest {
         .isEqualTo(
             """
             Da ghi nhan 2 giao dich:
-            1. Chi 30.000d - an sang
-            2. Thu 5.000.000d - luong\
+            1. Chi 30.000đ - an sang
+            2. Thu 5.000.000đ - luong\
             """);
   }
 }

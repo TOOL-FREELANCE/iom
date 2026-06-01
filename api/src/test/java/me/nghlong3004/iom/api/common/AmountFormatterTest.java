@@ -18,7 +18,7 @@ class AmountFormatterTest {
   void format_Vnd_ReturnsFormattedAmount() {
     var result = AmountFormatter.format(30000L, Currency.VND);
 
-    assertThat(result).isEqualTo("30.000d");
+    assertThat(result).isEqualTo("30.000đ");
   }
 
   @Test
@@ -66,7 +66,7 @@ class AmountFormatterTest {
   void format_ZeroAmountVnd_ReturnsZero() {
     var result = AmountFormatter.format(0L, Currency.VND);
 
-    assertThat(result).isEqualTo("0d");
+    assertThat(result).isEqualTo("0đ");
   }
 
   @Test
@@ -74,6 +74,6 @@ class AmountFormatterTest {
   void format_LargeAmountVnd_GroupsSeparatorsCorrectly() {
     var result = AmountFormatter.format(1000000000L, Currency.VND);
 
-    assertThat(result).isEqualTo("1.000.000.000d");
+    assertThat(result).isEqualTo("1.000.000.000đ");
   }
 }

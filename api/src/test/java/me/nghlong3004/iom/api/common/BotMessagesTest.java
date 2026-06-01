@@ -28,34 +28,34 @@ class BotMessagesTest {
   @Test
   @DisplayName("transactionRecorded should use note template when note is present")
   void transactionRecorded_WithNote_UsesNoteTemplate() {
-    given(messageSource.getMessage("bot.transaction.recorded", new Object[] {"Chi", "30.000d", "an sang"}, VI_LOCALE))
-        .willReturn("Da ghi nhan: Chi 30.000d cho an sang.");
+    given(messageSource.getMessage("bot.transaction.recorded", new Object[] {"Chi", "30.000đ", "an sang"}, VI_LOCALE))
+        .willReturn("Da ghi nhan: Chi 30.000đ cho an sang.");
 
-    var result = botMessages.transactionRecorded("Chi", "30.000d", "an sang");
+    var result = botMessages.transactionRecorded("Chi", "30.000đ", "an sang");
 
-    assertThat(result).isEqualTo("Da ghi nhan: Chi 30.000d cho an sang.");
+    assertThat(result).isEqualTo("Da ghi nhan: Chi 30.000đ cho an sang.");
   }
 
   @Test
   @DisplayName("transactionRecorded should use no-note template when note is blank")
   void transactionRecorded_BlankNote_UsesNoNoteTemplate() {
-    given(messageSource.getMessage("bot.transaction.recorded.no-note", new Object[] {"Thu", "5.000.000d"}, VI_LOCALE))
-        .willReturn("Da ghi nhan: Thu 5.000.000d.");
+    given(messageSource.getMessage("bot.transaction.recorded.no-note", new Object[] {"Thu", "5.000.000đ"}, VI_LOCALE))
+        .willReturn("Da ghi nhan: Thu 5.000.000đ.");
 
-    var result = botMessages.transactionRecorded("Thu", "5.000.000d", "");
+    var result = botMessages.transactionRecorded("Thu", "5.000.000đ", "");
 
-    assertThat(result).isEqualTo("Da ghi nhan: Thu 5.000.000d.");
+    assertThat(result).isEqualTo("Da ghi nhan: Thu 5.000.000đ.");
   }
 
   @Test
   @DisplayName("transactionRecorded should use no-note template when note is null")
   void transactionRecorded_NullNote_UsesNoNoteTemplate() {
-    given(messageSource.getMessage("bot.transaction.recorded.no-note", new Object[] {"Thu", "5.000.000d"}, VI_LOCALE))
-        .willReturn("Da ghi nhan: Thu 5.000.000d.");
+    given(messageSource.getMessage("bot.transaction.recorded.no-note", new Object[] {"Thu", "5.000.000đ"}, VI_LOCALE))
+        .willReturn("Da ghi nhan: Thu 5.000.000đ.");
 
-    var result = botMessages.transactionRecorded("Thu", "5.000.000d", null);
+    var result = botMessages.transactionRecorded("Thu", "5.000.000đ", null);
 
-    assertThat(result).isEqualTo("Da ghi nhan: Thu 5.000.000d.");
+    assertThat(result).isEqualTo("Da ghi nhan: Thu 5.000.000đ.");
   }
 
   @Test

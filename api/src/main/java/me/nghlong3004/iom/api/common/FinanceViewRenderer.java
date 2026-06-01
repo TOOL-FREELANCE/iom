@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import me.nghlong3004.iom.api.domain.summary.DateRange;
 import me.nghlong3004.iom.api.domain.summary.FlowFilter;
 import me.nghlong3004.iom.api.domain.summary.ViewMode;
+import me.nghlong3004.iom.api.domain.transaction.Currency;
 import me.nghlong3004.iom.api.domain.transaction.Transaction;
 import me.nghlong3004.iom.api.domain.transaction.TransactionType;
 import me.nghlong3004.iom.api.service.TransactionSummary;
@@ -57,13 +58,7 @@ public class FinanceViewRenderer {
     var sb = new StringBuilder(range.label()).append(":\n");
     summary
         .totals()
-        .forEach(
-            (currency, total) -> {
-              var income = AmountFormatter.format(total.totalIncome(), currency);
-              var expense = AmountFormatter.format(total.totalExpense(), currency);
-              sb.append(formatSummaryLine(effectiveFilter, expense, income, currency.name()))
-                  .append("\n");
-            });
+        .forEach((currency, total) -> appendSummaryLines(sb, effectiveFilter, currency, total));
     sb.append(botMessages.summaryTotal(summary.transactionCount()));
     return sb.toString();
   }
@@ -76,6 +71,7 @@ public class FinanceViewRenderer {
     }
 
     var sb = new StringBuilder(renderTransactionLines(range, filtered));
+    sb.append("\n");
     sb.append(botMessages.summaryTotal(filtered.size()));
     return sb.toString();
   }
@@ -91,29 +87,38 @@ public class FinanceViewRenderer {
     }
 
     var sb = new StringBuilder(renderTransactionLines(range, filtered));
-    sb.append(botMessages.compactSeparator()).append("\n");
+    sb.append("\n");
 
     var effectiveFilter = filter == null ? FlowFilter.ALL : filter;
     summary
         .totals()
-        .forEach(
-            (currency, total) -> {
-              var income = AmountFormatter.format(total.totalIncome(), currency);
-              var expense = AmountFormatter.format(total.totalExpense(), currency);
-              sb.append(formatSummaryLine(effectiveFilter, expense, income, currency.name()))
-                  .append("\n");
-            });
+        .forEach((currency, total) -> appendSummaryLines(sb, effectiveFilter, currency, total));
     sb.append(botMessages.summaryTotal(filtered.size()));
     return sb.toString();
   }
 
-  private String formatSummaryLine(
-      FlowFilter flowFilter, String expense, String income, String currencyName) {
-    return switch (flowFilter) {
-      case EXPENSE -> botMessages.summaryExpenseLine(expense, currencyName);
-      case INCOME -> botMessages.summaryIncomeLine(income, currencyName);
-      case ALL -> botMessages.summaryLine(expense, income, currencyName);
-    };
+  private void appendSummaryLines(
+      StringBuilder sb,
+      FlowFilter flowFilter,
+      Currency currency,
+      TransactionSummary.CurrencyTotal total) {
+    var expense = AmountFormatter.format(total.totalExpense(), currency);
+    var income = AmountFormatter.format(total.totalIncome(), currency);
+
+    switch (flowFilter) {
+      case EXPENSE ->
+          sb.append(botMessages.summaryExpenseLine(expense, currency.name())).append("\n");
+      case INCOME ->
+          sb.append(botMessages.summaryIncomeLine(income, currency.name())).append("\n");
+      case ALL -> {
+        if (total.totalExpense() > 0) {
+          sb.append(botMessages.summaryExpenseLine(expense, currency.name())).append("\n");
+        }
+        if (total.totalIncome() > 0) {
+          sb.append(botMessages.summaryIncomeLine(income, currency.name())).append("\n");
+        }
+      }
+    }
   }
 
   private List<Transaction> filterTransactions(List<Transaction> transactions, FlowFilter filter) {
@@ -127,14 +132,23 @@ public class FinanceViewRenderer {
 
   private String renderTransactionLines(DateRange range, List<Transaction> transactions) {
     var sb = new StringBuilder(botMessages.detailHeader(range.label())).append("\n");
+    var showType = hasMixedTransactionTypes(transactions);
     for (int i = 0; i < transactions.size(); i++) {
       var tx = transactions.get(i);
       var note = tx.getNote() != null ? tx.getNote() : tx.getCategory().name().toLowerCase();
       var isIncome = tx.getType() == TransactionType.INCOME;
-      var typeLabel = botMessages.typeLabel(isIncome);
       var formatted = AmountFormatter.format(tx.getAmount(), tx.getCurrency());
-      sb.append(botMessages.detailLine(i + 1, note, typeLabel, formatted)).append("\n");
+      if (showType) {
+        var typeLabel = botMessages.typeLabel(isIncome);
+        sb.append(botMessages.detailLine(i + 1, note, typeLabel, formatted)).append("\n");
+      } else {
+        sb.append(botMessages.detailAmountLine(i + 1, note, formatted)).append("\n");
+      }
     }
     return sb.toString();
+  }
+
+  private boolean hasMixedTransactionTypes(List<Transaction> transactions) {
+    return transactions.stream().map(Transaction::getType).distinct().limit(2).count() > 1;
   }
 }

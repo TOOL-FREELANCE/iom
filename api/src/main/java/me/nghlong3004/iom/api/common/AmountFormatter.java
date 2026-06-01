@@ -9,7 +9,7 @@ import me.nghlong3004.iom.api.domain.transaction.Currency;
  *
  * <p>Formats amounts stored in smallest currency units to human-readable strings:
  * <ul>
- *   <li>{@code format(30000, VND)} -> {@code "30.000d"}</li>
+ *   <li>{@code format(30000, VND)} -> {@code "30.000đ"}</li>
  *   <li>{@code format(1050, USD)} -> {@code "$10.50"}</li>
  *   <li>{@code format(5000, JPY)} -> {@code "\u00A55,000"}</li>
  * </ul>

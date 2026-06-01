@@ -107,12 +107,12 @@ public class BotMessages {
     return get("bot.detail.line", index, note, typeLabel, formattedAmount);
   }
 
-  public String detailEmpty(String label) {
-    return get("bot.detail.empty", label);
+  public String detailAmountLine(int index, String note, String formattedAmount) {
+    return get("bot.detail.amount-line", index, note, formattedAmount);
   }
 
-  public String compactSeparator() {
-    return get("bot.compact.separator");
+  public String detailEmpty(String label) {
+    return get("bot.detail.empty", label);
   }
 
   // Transaction management messages
