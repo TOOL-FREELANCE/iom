@@ -3,8 +3,7 @@ package me.nghlong3004.iom.api.domain.conversation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
-import me.nghlong3004.iom.api.domain.transaction.TransactionAction;
-import me.nghlong3004.iom.api.domain.transaction.TransactionReference;
+import me.nghlong3004.iom.api.domain.conversation.ConversationContext.PendingActionType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,11 +26,22 @@ class ConversationContextTest {
   }
 
   @Test
-  @DisplayName("Should track last recorded transaction ID")
-  void setLastRecordedTransactionId_SetsValue() {
-    context.setLastRecordedTransactionId(42L);
-    assertThat(context.getLastRecordedTransactionId()).isEqualTo(42L);
+  @DisplayName("Should track last recorded transaction IDs")
+  void setLastRecordedTransactionIds_SetsValue() {
+    context.setLastRecordedTransactionIds(List.of(10L, 20L));
+    assertThat(context.getLastRecordedTransactionIds()).containsExactly(10L, 20L);
+    assertThat(context.resolveLatestRecorded()).isEqualTo(20L);
     assertThat(context.hasLastRecorded()).isTrue();
+  }
+
+  @Test
+  @DisplayName("Should keep recorded transaction IDs bounded")
+  void setLastRecordedTransactionIds_BoundsList() {
+    context.setLastRecordedTransactionIds(
+        java.util.stream.LongStream.rangeClosed(1, 12).boxed().toList());
+
+    assertThat(context.getLastRecordedTransactionIds())
+        .containsExactly(3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L);
   }
 
   @Test
@@ -40,6 +50,18 @@ class ConversationContextTest {
     context.setLastViewedTransactionIds(List.of(1L, 2L, 3L));
     assertThat(context.getLastViewedTransactionIds()).containsExactly(1L, 2L, 3L);
     assertThat(context.hasViewedList()).isTrue();
+  }
+
+  @Test
+  @DisplayName("Should keep viewed transaction IDs bounded")
+  void setLastViewedTransactionIds_BoundsList() {
+    context.setLastViewedTransactionIds(
+        java.util.stream.LongStream.rangeClosed(1, 22).boxed().toList());
+
+    assertThat(context.getLastViewedTransactionIds())
+        .containsExactly(
+            3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L,
+            13L, 14L, 15L, 16L, 17L, 18L, 19L, 20L, 21L, 22L);
   }
 
   @Test
@@ -62,23 +84,22 @@ class ConversationContextTest {
   @Test
   @DisplayName("Should transition to AWAITING_CONFIRMATION on setPending")
   void setPending_TransitionsToAwaitingConfirmation() {
-    var action = new TransactionAction.Delete(new TransactionReference.Latest());
-    context.setPending(action, null);
+    context.setPending(PendingActionType.DELETE, 42L, "ăn sáng");
 
     assertThat(context.isAwaitingConfirmation()).isTrue();
-    assertThat(context.getPendingAction()).isEqualTo(action);
+    assertThat(context.getPendingAction().actionType()).isEqualTo(PendingActionType.DELETE);
+    assertThat(context.getPendingAction().transactionId()).isEqualTo(42L);
+    assertThat(context.getPendingAction().description()).isEqualTo("ăn sáng");
   }
 
   @Test
   @DisplayName("Should return to IDLE on clearPending")
   void clearPending_ReturnsToIdle() {
-    var action = new TransactionAction.Delete(new TransactionReference.Latest());
-    context.setPending(action, null);
+    context.setPending(PendingActionType.DELETE, 42L, "ăn sáng");
     context.clearPending();
 
     assertThat(context.isAwaitingConfirmation()).isFalse();
     assertThat(context.getPendingAction()).isNull();
-    assertThat(context.getPendingTarget()).isNull();
   }
 
   @Test
@@ -92,7 +113,7 @@ class ConversationContextTest {
   @DisplayName("Should update lastActivityAt on mutations")
   void mutations_UpdateLastActivityAt() {
     var before = context.getLastActivityAt();
-    context.setLastRecordedTransactionId(1L);
+    context.setLastRecordedTransactionIds(List.of(1L));
     assertThat(context.getLastActivityAt()).isAfterOrEqualTo(before);
   }
 }

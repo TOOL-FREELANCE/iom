@@ -1,6 +1,7 @@
 package me.nghlong3004.iom.api.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -59,6 +60,46 @@ class TransactionServiceTest {
 
     assertThat(result).isSameAs(saved);
     verify(transactionRepository).save(transaction);
+  }
+
+  @Test
+  @DisplayName("Should map and save all transactions atomically when recording batch")
+  void recordAll_ValidInput_SavesAllTransactions() {
+    var user = AppUser.builder().id(1L).build();
+    var parsed1 =
+        new ParsedTransaction(
+            TransactionType.EXPENSE, 30000L, Currency.VND, Category.FOOD, "an sang", null);
+    var parsed2 =
+        new ParsedTransaction(
+            TransactionType.EXPENSE, 50000L, Currency.VND, Category.FOOD, "an trua", null);
+    var tx1 = Transaction.builder().id(10L).build();
+    var tx2 = Transaction.builder().id(20L).build();
+    var saved1 = Transaction.builder().id(11L).build();
+    var saved2 = Transaction.builder().id(21L).build();
+
+    given(transactionMapper.toEntity(user, parsed1, MessageChannel.TELEGRAM, "batch"))
+        .willReturn(tx1);
+    given(transactionMapper.toEntity(user, parsed2, MessageChannel.TELEGRAM, "batch"))
+        .willReturn(tx2);
+    given(transactionRepository.saveAll(List.of(tx1, tx2))).willReturn(List.of(saved1, saved2));
+
+    var result =
+        service.recordAll(user, List.of(parsed1, parsed2), MessageChannel.TELEGRAM, "batch");
+
+    assertThat(result).containsExactly(saved1, saved2);
+    verify(transactionRepository).saveAll(List.of(tx1, tx2));
+  }
+
+  @Test
+  @DisplayName("Should reject empty batch")
+  void recordAll_EmptyBatch_ThrowsException() {
+    var user = AppUser.builder().id(1L).build();
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> service.recordAll(user, List.of(), MessageChannel.TELEGRAM, "batch"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("parsedTransactions must not be empty");
+    verify(transactionRepository, org.mockito.Mockito.never()).saveAll(any());
   }
 
   @Test

@@ -2,6 +2,7 @@ package me.nghlong3004.iom.api.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import me.nghlong3004.iom.api.domain.conversation.ConversationContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,20 +26,20 @@ class InMemoryConversationContextStoreTest {
   @DisplayName("Should return same context for same key")
   void get_SameKey_ReturnsSameContext() {
     var ctx1 = store.get("TELEGRAM:user-1");
-    ctx1.setLastRecordedTransactionId(42L);
+    ctx1.setLastRecordedTransactionIds(List.of(42L));
     var ctx2 = store.get("TELEGRAM:user-1");
-    assertThat(ctx2.getLastRecordedTransactionId()).isEqualTo(42L);
+    assertThat(ctx2.getLastRecordedTransactionIds()).containsExactly(42L);
   }
 
   @Test
   @DisplayName("Should save and retrieve updated context")
   void save_UpdatesContext() {
     var context = store.get("TELEGRAM:user-2");
-    context.setLastRecordedTransactionId(99L);
+    context.setLastRecordedTransactionIds(List.of(99L));
     store.save(context);
 
     var retrieved = store.get("TELEGRAM:user-2");
-    assertThat(retrieved.getLastRecordedTransactionId()).isEqualTo(99L);
+    assertThat(retrieved.getLastRecordedTransactionIds()).containsExactly(99L);
   }
 
   @Test
@@ -46,7 +47,7 @@ class InMemoryConversationContextStoreTest {
   void get_DifferentKeys_ReturnDifferentContexts() {
     var ctx1 = store.get("TELEGRAM:user-1");
     var ctx2 = store.get("TELEGRAM:user-2");
-    ctx1.setLastRecordedTransactionId(1L);
-    assertThat(ctx2.getLastRecordedTransactionId()).isNull();
+    ctx1.setLastRecordedTransactionIds(List.of(1L));
+    assertThat(ctx2.getLastRecordedTransactionIds()).isEmpty();
   }
 }

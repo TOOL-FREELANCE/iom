@@ -68,15 +68,20 @@ class FinanceViewRendererTest {
   @DisplayName("DETAIL mode should list individual transactions")
   void render_DetailMode_ListsTransactions() {
     var tx = buildTransaction(TransactionType.EXPENSE, 30000L, "ăn sáng", Category.FOOD);
-    given(botMessages.detailHeader("Hôm qua")).willReturn("📋 Hôm qua:");
-    given(botMessages.detailLine(eq(1), eq("🍜"), eq("ăn sáng"), anyString(), anyString()))
-        .willReturn("  1. 🍜 ăn sáng — Chi 30.000đ");
+    given(botMessages.detailHeader("Hôm qua")).willReturn("Hôm qua:");
+    given(botMessages.detailLine(eq(1), eq("ăn sáng"), anyString(), anyString()))
+        .willReturn("1. ăn sáng - Chi 30.000đ");
     given(botMessages.typeLabel(false)).willReturn("Chi");
     given(botMessages.summaryTotal(1)).willReturn("Tổng: 1 giao dịch.");
 
     var result = renderer.render(RANGE, ViewMode.DETAIL, List.of(tx), null, FlowFilter.ALL);
 
-    assertThat(result).contains("📋 Hôm qua:").contains("🍜 ăn sáng").contains("Tổng: 1 giao dịch.");
+    assertThat(result)
+        .contains("Hôm qua:")
+        .contains("1. ăn sáng - Chi 30.000đ")
+        .contains("Tổng: 1 giao dịch.")
+        .doesNotContain("🍜")
+        .doesNotContain("📋");
   }
 
   @Test
@@ -96,11 +101,11 @@ class FinanceViewRendererTest {
     var summary =
         new TransactionSummary(
             Map.of(Currency.VND, new TransactionSummary.CurrencyTotal(0L, 30000L)), 1);
-    given(botMessages.detailHeader("Hôm qua")).willReturn("📋 Hôm qua:");
-    given(botMessages.detailLine(eq(1), eq("🍜"), eq("ăn sáng"), anyString(), anyString()))
-        .willReturn("  1. 🍜 ăn sáng — Chi 30.000đ");
+    given(botMessages.detailHeader("Hôm qua")).willReturn("Hôm qua:");
+    given(botMessages.detailLine(eq(1), eq("ăn sáng"), anyString(), anyString()))
+        .willReturn("1. ăn sáng - Chi 30.000đ");
     given(botMessages.typeLabel(false)).willReturn("Chi");
-    given(botMessages.compactSeparator()).willReturn("──────");
+    given(botMessages.compactSeparator()).willReturn("------");
     given(botMessages.summaryLine(anyString(), anyString(), eq("VND")))
         .willReturn("  Chi 30.000đ | Thu 0đ (VND)");
     given(botMessages.summaryTotal(1)).willReturn("Tổng: 1 giao dịch.");
@@ -109,11 +114,13 @@ class FinanceViewRendererTest {
         renderer.render(RANGE, ViewMode.COMPACT, List.of(tx), summary, FlowFilter.ALL);
 
     assertThat(result)
-        .contains("📋 Hôm qua:")
-        .contains("🍜 ăn sáng")
-        .contains("──────")
+        .contains("Hôm qua:")
+        .contains("1. ăn sáng - Chi 30.000đ")
+        .contains("------")
         .contains("Chi 30.000đ")
-        .contains("Tổng: 1 giao dịch.");
+        .contains("Tổng: 1 giao dịch.")
+        .doesNotContain("🍜")
+        .doesNotContain("📋");
   }
 
   private Transaction buildTransaction(

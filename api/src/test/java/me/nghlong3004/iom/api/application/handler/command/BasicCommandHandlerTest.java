@@ -9,7 +9,6 @@ import me.nghlong3004.iom.api.domain.MessageChannel;
 import me.nghlong3004.iom.api.domain.message.IncomingMessage;
 import me.nghlong3004.iom.api.domain.message.MessageSender;
 import me.nghlong3004.iom.api.domain.message.OutgoingMessage;
-import me.nghlong3004.iom.api.application.handler.nlp.EchoMessageHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,19 +67,6 @@ class BasicCommandHandlerTest {
   }
 
   @Test
-  @DisplayName("Fallback command should send configured fallback message")
-  void echoHandle_TextMessage_SendsFallbackMessage() {
-    var handler = new EchoMessageHandler(messageSender, botMessages);
-    var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
-    given(botMessages.fallbackMessage()).willReturn("fallback");
-
-    var handled = handler.handle(message);
-
-    assertThat(handled).isTrue();
-    assertSentText("fallback");
-  }
-
-  @Test
   @DisplayName("Start handler should support /start command")
   void startSupports_StartCommand_ReturnsTrue() {
     var handler = new StartCommandHandler(messageSender, botMessages);
@@ -123,15 +109,6 @@ class BasicCommandHandlerTest {
     var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
 
     assertThat(handler.supports(message)).isFalse();
-  }
-
-  @Test
-  @DisplayName("Echo handler should support any text with content")
-  void echoSupports_TextWithContent_ReturnsTrue() {
-    var handler = new EchoMessageHandler(messageSender, botMessages);
-    var message = new IncomingMessage(MessageChannel.TELEGRAM, "u-1", "chat-1", "hello");
-
-    assertThat(handler.supports(message)).isTrue();
   }
 
   private void assertSentText(String expectedText) {
