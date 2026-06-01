@@ -128,7 +128,7 @@ user, message channel, raw input, and conversation key.
 | `recordTransaction` | Compatibility single-item tool | delegates to `recordTransactions` with one item |
 | `viewFinances` | Renders summary or transaction history for an LLM-supplied date range | saves bounded `lastViewedTransactionIds` only for indexed detail/compact views |
 | `deleteTransaction` | Starts a delete confirmation flow for `LATEST` or `BY_INDEX` references | saves pending `DELETE`, returns confirmation prompt |
-| `undoLastTransaction` | Deletes the last record action immediately | clears `lastRecordedTransactionIds`, returns undo confirmation |
+| `undoLastTransaction` | Starts confirmation for deleting the last record action | keeps ids pending until user confirms |
 
 ### Record Transactions
 

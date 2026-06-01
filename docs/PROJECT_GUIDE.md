@@ -359,7 +359,7 @@ cd api
 | Spring AI tool calling | Implemented | `NlpMessageHandler` registers `FinanceTools` with `ChatClient`. |
 | Batch transaction recording | Implemented | `recordTransactions` stores up to 10 parsed items atomically. |
 | Transaction history/detail view | Implemented | `viewFinances` renders summary/detail/compact views. |
-| Delete and undo | Implemented | Delete uses confirmation; undo deletes the last recorded batch/action immediately. |
+| Delete and undo | Implemented | Delete and undo both require confirmation before deleting transactions. |
 | Natural-language update | Not wired | Domain/service support exists, but no `FinanceTools` update method yet. |
 | Durable conversation state | Not implemented | Current store is in-memory. |
 | Web dashboard | Planned | OAuth/JWT foundations exist; no active client app in this repository. |

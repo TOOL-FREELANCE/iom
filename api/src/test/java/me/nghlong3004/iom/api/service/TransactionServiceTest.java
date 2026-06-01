@@ -103,6 +103,49 @@ class TransactionServiceTest {
   }
 
   @Test
+  @DisplayName("Should delete all transactions atomically")
+  void deleteAll_ValidInput_DeletesAllTransactions() {
+    var user = AppUser.builder().id(1L).build();
+    var tx1 = Transaction.builder().id(10L).user(user).build();
+    var tx2 = Transaction.builder().id(20L).user(user).build();
+    given(transactionRepository.findAllById(List.of(10L, 20L))).willReturn(List.of(tx1, tx2));
+
+    service.deleteAll(user, List.of(10L, 20L));
+
+    verify(transactionRepository).deleteAll(List.of(tx1, tx2));
+  }
+
+  @Test
+  @DisplayName("Should reject batch delete when any transaction is missing")
+  void deleteAll_MissingTransaction_ThrowsException() {
+    var user = AppUser.builder().id(1L).build();
+    var tx1 = Transaction.builder().id(10L).user(user).build();
+    given(transactionRepository.findAllById(List.of(10L, 20L))).willReturn(List.of(tx1));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> service.deleteAll(user, List.of(10L, 20L)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Transaction not found");
+    verify(transactionRepository, org.mockito.Mockito.never()).deleteAll(any());
+  }
+
+  @Test
+  @DisplayName("Should reject batch delete when any transaction belongs to another user")
+  void deleteAll_UnauthorizedTransaction_ThrowsException() {
+    var user = AppUser.builder().id(1L).build();
+    var otherUser = AppUser.builder().id(2L).build();
+    var tx1 = Transaction.builder().id(10L).user(user).build();
+    var tx2 = Transaction.builder().id(20L).user(otherUser).build();
+    given(transactionRepository.findAllById(List.of(10L, 20L))).willReturn(List.of(tx1, tx2));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> service.deleteAll(user, List.of(10L, 20L)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Not authorized to delete this transaction");
+    verify(transactionRepository, org.mockito.Mockito.never()).deleteAll(any());
+  }
+
+  @Test
   @DisplayName("Should summarize transactions returned from repository")
   void summarize_DateRange_ReturnsSummary() {
     var user = AppUser.builder().id(1L).build();

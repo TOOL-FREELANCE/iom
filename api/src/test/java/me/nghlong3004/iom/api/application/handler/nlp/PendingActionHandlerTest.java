@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
 import me.nghlong3004.iom.api.application.port.out.ConversationContextStore;
 import me.nghlong3004.iom.api.application.port.out.UserResolver;
 import me.nghlong3004.iom.api.common.BotMessages;
@@ -48,6 +49,7 @@ class PendingActionHandlerTest {
   @DisplayName("Should handle ok confirmation and execute pending delete")
   void handleIfPending_ConfirmDelete_ExecutesAndReplies() {
     var user = mock(AppUser.class);
+    context.setLastRecordedTransactionIds(List.of(42L));
     context.setPending(PendingActionType.DELETE, 42L, "ăn sáng");
     when(userResolver.resolve(any())).thenReturn(user);
     when(botMessages.manageDeleted("ăn sáng")).thenReturn("Đã xoá giao dịch ăn sáng.");
@@ -56,9 +58,29 @@ class PendingActionHandlerTest {
     var result = handler.handleIfPending(message, context);
 
     assertThat(result).isTrue();
-    verify(transactionService).delete(user, 42L);
+    verify(transactionService).deleteAll(user, List.of(42L));
     verify(messageSender).send(any(OutgoingMessage.class));
     assertThat(context.isAwaitingConfirmation()).isFalse();
+    assertThat(context.getLastRecordedTransactionIds()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Should handle ok confirmation and execute pending batch delete")
+  void handleIfPending_ConfirmBatchDelete_ExecutesAndReplies() {
+    var user = mock(AppUser.class);
+    context.setLastRecordedTransactionIds(List.of(10L, 20L, 30L));
+    context.setPending(PendingActionType.DELETE, List.of(10L, 20L), "2 giao dịch gần nhất");
+    when(userResolver.resolve(any())).thenReturn(user);
+    when(botMessages.manageDeleted("2 giao dịch gần nhất")).thenReturn("Đã xoá 2 giao dịch.");
+
+    var message = new IncomingMessage(MessageChannel.TELEGRAM, "user1", "conv1", "ok");
+    var result = handler.handleIfPending(message, context);
+
+    assertThat(result).isTrue();
+    verify(transactionService).deleteAll(user, List.of(10L, 20L));
+    verify(messageSender).send(any(OutgoingMessage.class));
+    assertThat(context.isAwaitingConfirmation()).isFalse();
+    assertThat(context.getLastRecordedTransactionIds()).containsExactly(30L);
   }
 
   @Test
@@ -71,7 +93,7 @@ class PendingActionHandlerTest {
     var result = handler.handleIfPending(message, context);
 
     assertThat(result).isTrue();
-    verify(transactionService, never()).delete(any(), any());
+    verify(transactionService, never()).deleteAll(any(), any());
     var captor = ArgumentCaptor.forClass(OutgoingMessage.class);
     verify(messageSender).send(captor.capture());
     assertThat(captor.getValue().text()).isEqualTo("Đã huỷ.");

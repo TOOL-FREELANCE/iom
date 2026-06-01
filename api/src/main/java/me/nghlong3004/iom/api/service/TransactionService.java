@@ -121,6 +121,31 @@ public class TransactionService {
   }
 
   @Transactional
+  public void deleteAll(AppUser user, List<Long> transactionIds) {
+    Objects.requireNonNull(user, "user must not be null");
+    Objects.requireNonNull(transactionIds, "transactionIds must not be null");
+
+    if (transactionIds.isEmpty()) {
+      throw new IllegalArgumentException("transactionIds must not be empty");
+    }
+
+    var transactions = transactionRepository.findAllById(transactionIds);
+    if (transactions.size() != transactionIds.size()) {
+      throw new IllegalArgumentException("Transaction not found");
+    }
+
+    var hasUnauthorizedTransaction =
+        transactions.stream()
+            .anyMatch(transaction -> !transaction.getUser().getId().equals(user.getId()));
+    if (hasUnauthorizedTransaction) {
+      throw new IllegalArgumentException("Not authorized to delete this transaction");
+    }
+
+    transactionRepository.deleteAll(transactions);
+    log.info("Transactions deleted: count={}, userId={}", transactions.size(), user.getId());
+  }
+
+  @Transactional
   public Transaction update(AppUser user, Long transactionId, UpdateFields changes) {
     Objects.requireNonNull(user, "user must not be null");
     Objects.requireNonNull(transactionId, "transactionId must not be null");

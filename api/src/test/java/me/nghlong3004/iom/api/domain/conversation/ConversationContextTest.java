@@ -89,7 +89,18 @@ class ConversationContextTest {
     assertThat(context.isAwaitingConfirmation()).isTrue();
     assertThat(context.getPendingAction().actionType()).isEqualTo(PendingActionType.DELETE);
     assertThat(context.getPendingAction().transactionId()).isEqualTo(42L);
+    assertThat(context.getPendingAction().transactionIds()).containsExactly(42L);
     assertThat(context.getPendingAction().description()).isEqualTo("ăn sáng");
+  }
+
+  @Test
+  @DisplayName("Should support pending actions for multiple transaction IDs")
+  void setPending_WithMultipleTransactionIds_StoresIds() {
+    context.setPending(PendingActionType.DELETE, List.of(10L, 20L), "2 giao dịch gần nhất");
+
+    assertThat(context.isAwaitingConfirmation()).isTrue();
+    assertThat(context.getPendingAction().transactionIds()).containsExactly(10L, 20L);
+    assertThat(context.getPendingAction().transactionId()).isEqualTo(20L);
   }
 
   @Test

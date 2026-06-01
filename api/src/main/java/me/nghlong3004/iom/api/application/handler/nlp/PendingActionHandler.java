@@ -1,5 +1,6 @@
 package me.nghlong3004.iom.api.application.handler.nlp;
 
+import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -77,13 +78,15 @@ public class PendingActionHandler {
     try {
       switch (pending.actionType()) {
         case DELETE -> {
-          transactionService.delete(user, pending.transactionId());
+          var transactionIds = pending.transactionIds();
+          transactionService.deleteAll(user, transactionIds);
+          removeRecordedIds(context, transactionIds);
           var desc =
               pending.description() != null && !pending.description().isBlank()
                   ? pending.description()
                   : String.valueOf(pending.transactionId());
           reply = botMessages.manageDeleted(desc);
-          log.info("Confirmed DELETE txId={}", pending.transactionId());
+          log.info("Confirmed DELETE count={}", transactionIds.size());
         }
         default -> reply = botMessages.fallbackMessage();
       }
@@ -96,5 +99,15 @@ public class PendingActionHandler {
     contextStore.save(context);
     messageSender.send(OutgoingMessage.replyTo(message, reply));
   }
-}
 
+  private void removeRecordedIds(ConversationContext context, List<Long> transactionIds) {
+    if (transactionIds == null || transactionIds.isEmpty() || !context.hasLastRecorded()) {
+      return;
+    }
+
+    context.setLastRecordedTransactionIds(
+        context.getLastRecordedTransactionIds().stream()
+            .filter(transactionId -> !transactionIds.contains(transactionId))
+            .toList());
+  }
+}

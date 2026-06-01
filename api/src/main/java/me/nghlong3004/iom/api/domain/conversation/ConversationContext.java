@@ -54,7 +54,16 @@ public class ConversationContext {
    * @param description display text used in confirmation and success replies
    */
   public record PendingAction(
-      PendingActionType actionType, Long transactionId, String description) {}
+      PendingActionType actionType, List<Long> transactionIds, String description) {
+
+    public PendingAction {
+      transactionIds = transactionIds == null ? List.of() : List.copyOf(transactionIds);
+    }
+
+    public Long transactionId() {
+      return transactionIds.isEmpty() ? null : transactionIds.getLast();
+    }
+  }
 
   public void setLastRecordedTransactionIds(List<Long> transactionIds) {
     this.lastRecordedTransactionIds = boundedCopy(transactionIds, MAX_RECORDED_TRANSACTION_IDS);
@@ -82,7 +91,11 @@ public class ConversationContext {
    * @param description display text used in confirmation and success replies
    */
   public void setPending(PendingActionType actionType, Long transactionId, String description) {
-    this.pendingAction = new PendingAction(actionType, transactionId, description);
+    setPending(actionType, transactionId == null ? List.of() : List.of(transactionId), description);
+  }
+
+  public void setPending(PendingActionType actionType, List<Long> transactionIds, String description) {
+    this.pendingAction = new PendingAction(actionType, transactionIds, description);
     this.state = ConversationState.AWAITING_CONFIRMATION;
     touch();
   }

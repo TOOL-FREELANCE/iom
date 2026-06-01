@@ -201,8 +201,9 @@ public class FinanceTools {
       returnDirect = true,
       description =
           """
-      Undo the last recorded transaction action. If the last action recorded multiple transactions,
-      all transactions from that action are deleted.
+      Start confirmation to undo the last recorded transaction action. If the last action recorded
+      multiple transactions, all transactions from that action will be deleted only after the user
+      confirms.
       Use when user says "undo", "hoàn tác", "bỏ cái vừa rồi".
       """)
   String undoLastTransaction() {
@@ -225,16 +226,16 @@ public class FinanceTools {
       return botMessages.manageNotFound();
     }
 
-    foundTransactions.forEach(tx -> transactionService.delete(user, tx.getId()));
-    context.setLastRecordedTransactionIds(List.of());
-    contextStore.save(context);
-
     var desc =
         foundTransactions.size() == 1
             ? transactionDescription(foundTransactions.getFirst())
             : foundTransactions.size() + " giao dịch gần nhất";
-    log.info("Tool undoLastTransaction: deleted count={}", foundTransactions.size());
-    return botMessages.manageUndone(desc);
+    context.setPending(
+        PendingActionType.DELETE, foundTransactions.stream().map(Transaction::getId).toList(), desc);
+    contextStore.save(context);
+
+    log.info("Tool undoLastTransaction: pending confirm for count={}", foundTransactions.size());
+    return botMessages.manageConfirmDelete(desc);
   }
 
   private void saveViewedIdsIfIndexed(

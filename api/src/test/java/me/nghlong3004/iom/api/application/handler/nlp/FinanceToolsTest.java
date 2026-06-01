@@ -243,22 +243,24 @@ class FinanceToolsTest {
   class UndoLastTransaction {
 
     @Test
-    @DisplayName("Should delete all transactions from last recorded batch")
-    void undoLastTransaction_HasBatch_DeletesAllAndConfirms() {
+    @DisplayName("Should ask for confirmation before undoing last recorded batch")
+    void undoLastTransaction_HasBatch_PendsDeleteConfirmation() {
       context.setLastRecordedTransactionIds(List.of(10L, 20L));
 
       var tx1 = transaction(10L, Currency.VND, TransactionType.EXPENSE, 80000L);
       var tx2 = transaction(20L, Currency.VND, TransactionType.EXPENSE, 60000L);
       when(transactionService.findByUserAndId(user, 10L)).thenReturn(Optional.of(tx1));
       when(transactionService.findByUserAndId(user, 20L)).thenReturn(Optional.of(tx2));
-      when(botMessages.manageUndone("2 giao dịch gần nhất")).thenReturn("undo 2");
+      when(botMessages.manageConfirmDelete("2 giao dịch gần nhất")).thenReturn("confirm undo 2");
 
       var result = tools.undoLastTransaction();
 
-      assertThat(result).isEqualTo("undo 2");
-      verify(transactionService).delete(user, 10L);
-      verify(transactionService).delete(user, 20L);
-      assertThat(context.getLastRecordedTransactionIds()).isEmpty();
+      assertThat(result).isEqualTo("confirm undo 2");
+      verify(transactionService, never()).delete(any(), any());
+      assertThat(context.isAwaitingConfirmation()).isTrue();
+      assertThat(context.getPendingAction().actionType()).isEqualTo(PendingActionType.DELETE);
+      assertThat(context.getPendingAction().transactionIds()).containsExactly(10L, 20L);
+      assertThat(context.getLastRecordedTransactionIds()).containsExactly(10L, 20L);
     }
 
     @Test
