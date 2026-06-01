@@ -8,6 +8,8 @@
 - Read this file for the broad project architecture and module inventory.
 - Read [`docs/BOT_FLOW.md`](BOT_FLOW.md) first when working on Telegram routing, bot replies,
   natural-language finance behavior, or bot handler tests.
+- Read [`docs/CASE_STUDY.md`](CASE_STUDY.md) for the portfolio-oriented technical case study and
+  architecture diagrams.
 
 ## 1. Project Overview
 
