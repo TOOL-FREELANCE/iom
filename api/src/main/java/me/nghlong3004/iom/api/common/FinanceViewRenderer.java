@@ -70,25 +70,12 @@ public class FinanceViewRenderer {
 
   private String renderDetail(
       DateRange range, List<Transaction> transactions, FlowFilter filter) {
-    if (transactions.isEmpty()) {
-      return botMessages.detailEmpty(range.label());
-    }
-
     var filtered = filterTransactions(transactions, filter);
     if (filtered.isEmpty()) {
       return botMessages.detailEmpty(range.label());
     }
 
-    var sb = new StringBuilder(botMessages.detailHeader(range.label())).append("\n");
-    for (int i = 0; i < filtered.size(); i++) {
-      var tx = filtered.get(i);
-      var emoji = tx.getCategory().getEmoji();
-      var note = tx.getNote() != null ? tx.getNote() : tx.getCategory().name().toLowerCase();
-      var isIncome = tx.getType() == TransactionType.INCOME;
-      var typeLabel = botMessages.typeLabel(isIncome);
-      var formatted = AmountFormatter.format(tx.getAmount(), tx.getCurrency());
-      sb.append(botMessages.detailLine(i + 1, emoji, note, typeLabel, formatted)).append("\n");
-    }
+    var sb = new StringBuilder(renderTransactionLines(range, filtered));
     sb.append(botMessages.summaryTotal(filtered.size()));
     return sb.toString();
   }
@@ -98,25 +85,12 @@ public class FinanceViewRenderer {
       List<Transaction> transactions,
       TransactionSummary summary,
       FlowFilter filter) {
-    if (transactions.isEmpty()) {
-      return botMessages.detailEmpty(range.label());
-    }
-
     var filtered = filterTransactions(transactions, filter);
     if (filtered.isEmpty()) {
       return botMessages.detailEmpty(range.label());
     }
 
-    var sb = new StringBuilder(botMessages.detailHeader(range.label())).append("\n");
-    for (int i = 0; i < filtered.size(); i++) {
-      var tx = filtered.get(i);
-      var emoji = tx.getCategory().getEmoji();
-      var note = tx.getNote() != null ? tx.getNote() : tx.getCategory().name().toLowerCase();
-      var isIncome = tx.getType() == TransactionType.INCOME;
-      var typeLabel = botMessages.typeLabel(isIncome);
-      var formatted = AmountFormatter.format(tx.getAmount(), tx.getCurrency());
-      sb.append(botMessages.detailLine(i + 1, emoji, note, typeLabel, formatted)).append("\n");
-    }
+    var sb = new StringBuilder(renderTransactionLines(range, filtered));
     sb.append(botMessages.compactSeparator()).append("\n");
 
     var effectiveFilter = filter == null ? FlowFilter.ALL : filter;
@@ -149,5 +123,18 @@ public class FinanceViewRenderer {
     var targetType =
         filter == FlowFilter.EXPENSE ? TransactionType.EXPENSE : TransactionType.INCOME;
     return transactions.stream().filter(tx -> tx.getType() == targetType).toList();
+  }
+
+  private String renderTransactionLines(DateRange range, List<Transaction> transactions) {
+    var sb = new StringBuilder(botMessages.detailHeader(range.label())).append("\n");
+    for (int i = 0; i < transactions.size(); i++) {
+      var tx = transactions.get(i);
+      var note = tx.getNote() != null ? tx.getNote() : tx.getCategory().name().toLowerCase();
+      var isIncome = tx.getType() == TransactionType.INCOME;
+      var typeLabel = botMessages.typeLabel(isIncome);
+      var formatted = AmountFormatter.format(tx.getAmount(), tx.getCurrency());
+      sb.append(botMessages.detailLine(i + 1, note, typeLabel, formatted)).append("\n");
+    }
+    return sb.toString();
   }
 }

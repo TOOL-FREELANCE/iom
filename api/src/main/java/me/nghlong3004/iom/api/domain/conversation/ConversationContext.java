@@ -4,8 +4,6 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import lombok.Getter;
-import me.nghlong3004.iom.api.domain.transaction.Transaction;
-import me.nghlong3004.iom.api.domain.transaction.TransactionAction;
 
 /**
  * Per-user conversation context for stateful interactions. Tracks the last recorded transaction,
@@ -19,16 +17,19 @@ import me.nghlong3004.iom.api.domain.transaction.TransactionAction;
 @Getter
 public class ConversationContext {
 
+  private static final int MAX_RECORDED_TRANSACTION_IDS = 10;
+  private static final int MAX_VIEWED_TRANSACTION_IDS = 20;
+
   private final String conversationKey;
-  private Long lastRecordedTransactionId;
+  private List<Long> lastRecordedTransactionIds;
   private List<Long> lastViewedTransactionIds;
-  private TransactionAction pendingAction;
-  private Transaction pendingTarget;
+  private PendingAction pendingAction;
   private ConversationState state;
   private Instant lastActivityAt;
 
   public ConversationContext(String conversationKey) {
     this.conversationKey = conversationKey;
+    this.lastRecordedTransactionIds = Collections.emptyList();
     this.lastViewedTransactionIds = Collections.emptyList();
     this.state = ConversationState.IDLE;
     this.lastActivityAt = Instant.now();
@@ -39,26 +40,49 @@ public class ConversationContext {
     AWAITING_CONFIRMATION
   }
 
-  public void setLastRecordedTransactionId(Long transactionId) {
-    this.lastRecordedTransactionId = transactionId;
+  public enum PendingActionType {
+    DELETE,
+    UPDATE
+  }
+
+  /**
+   * Lightweight pending action descriptor. Stores only a stable transaction ID and display
+   * description, avoiding persistence entities in conversation state.
+   *
+   * @param actionType the type of action, e.g. DELETE or UPDATE
+   * @param transactionId the ID of the target transaction
+   * @param description display text used in confirmation and success replies
+   */
+  public record PendingAction(
+      PendingActionType actionType, Long transactionId, String description) {}
+
+  public void setLastRecordedTransactionIds(List<Long> transactionIds) {
+    this.lastRecordedTransactionIds = boundedCopy(transactionIds, MAX_RECORDED_TRANSACTION_IDS);
     touch();
   }
 
+  public void setLastRecordedTransactionId(Long transactionId) {
+    setLastRecordedTransactionIds(transactionId == null ? null : List.of(transactionId));
+  }
+
+  public Long getLastRecordedTransactionId() {
+    return resolveLatestRecorded();
+  }
+
   public void setLastViewedTransactionIds(List<Long> transactionIds) {
-    this.lastViewedTransactionIds =
-        transactionIds != null ? Collections.unmodifiableList(transactionIds) : Collections.emptyList();
+    this.lastViewedTransactionIds = boundedCopy(transactionIds, MAX_VIEWED_TRANSACTION_IDS);
     touch();
   }
 
   /**
    * Sets a pending action that requires user confirmation.
    *
-   * @param action the action awaiting confirmation
-   * @param target the resolved transaction that will be affected
+   * @param actionType the action type, e.g. DELETE or UPDATE
+   * @param transactionId the ID of the target transaction
+   * @param description display text used in confirmation and success replies
    */
-  public void setPending(TransactionAction action, Transaction target) {
-    this.pendingAction = action;
-    this.pendingTarget = target;
+  public void setPending(PendingActionType actionType, Long transactionId, String description) {
+    this.pendingAction = new PendingAction(actionType, transactionId, description);
     this.state = ConversationState.AWAITING_CONFIRMATION;
     touch();
   }
@@ -66,7 +90,6 @@ public class ConversationContext {
   /** Clears any pending action and returns to IDLE state. */
   public void clearPending() {
     this.pendingAction = null;
-    this.pendingTarget = null;
     this.state = ConversationState.IDLE;
     touch();
   }
@@ -89,11 +112,26 @@ public class ConversationContext {
   }
 
   public boolean hasLastRecorded() {
-    return lastRecordedTransactionId != null;
+    return lastRecordedTransactionIds != null && !lastRecordedTransactionIds.isEmpty();
   }
 
   public boolean hasViewedList() {
     return lastViewedTransactionIds != null && !lastViewedTransactionIds.isEmpty();
+  }
+
+  public Long resolveLatestRecorded() {
+    if (!hasLastRecorded()) {
+      return null;
+    }
+    return lastRecordedTransactionIds.get(lastRecordedTransactionIds.size() - 1);
+  }
+
+  private List<Long> boundedCopy(List<Long> transactionIds, int maxSize) {
+    if (transactionIds == null || transactionIds.isEmpty()) {
+      return Collections.emptyList();
+    }
+    var fromIndex = Math.max(0, transactionIds.size() - maxSize);
+    return List.copyOf(transactionIds.subList(fromIndex, transactionIds.size()));
   }
 
   private void touch() {

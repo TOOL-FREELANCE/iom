@@ -55,8 +55,6 @@ spring:
           model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
           temperature: 0
           max-tokens: ${DEEPSEEK_MAX_TOKENS:512}
-          response-format:
-            type: json_object
 
   security:
     oauth2:
@@ -97,14 +95,6 @@ logging:
     org.telegram: INFO
 
 iom:
-  bot:
-    intents:
-      summary:
-        action-keywords: [xem, tong, thong ke, bao nhieu, bao cao]
-        today-keywords: [hom nay, ngay nay, today]
-        month-keywords: [thang nay, month]
-        expense-keywords: [chi, tieu, chi tieu]
-        income-keywords: [thu, thu nhap, luong]
   telegram:
     enabled: ${TELEGRAM_BOT_ENABLED:true}
     bot-token: ${TELEGRAM_BOT_TOKEN}

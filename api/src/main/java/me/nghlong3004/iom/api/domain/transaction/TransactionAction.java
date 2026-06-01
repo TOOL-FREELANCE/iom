@@ -3,47 +3,36 @@ package me.nghlong3004.iom.api.domain.transaction;
 import java.util.Objects;
 
 /**
- * Sealed hierarchy representing user actions on existing transactions.
- *
- * <p>Use exhaustive {@code switch} expressions for compiler-verified handling:
- *
- * <pre>{@code
- * switch (action) {
- *     case TransactionAction.Delete d  -> handleDelete(d);
- *     case TransactionAction.Update u  -> handleUpdate(u);
- *     case TransactionAction.Undo u    -> handleUndo();
- *     case TransactionAction.Confirm c -> handleConfirm();
- *     case TransactionAction.Cancel c  -> handleCancel();
- * }
- * }</pre>
+ * User-requested management action for an existing transaction.
  *
  * @author nghlong3004 (Nguyen Hoang Long)
  * @since 5/27/2026
  */
 public sealed interface TransactionAction {
 
-  /** Request to delete a transaction. */
+  /** Delete a transaction resolved from the supplied reference. */
   record Delete(TransactionReference reference) implements TransactionAction {
+
     public Delete {
       Objects.requireNonNull(reference, "reference is required");
     }
   }
 
-  /** Request to update a transaction with partial changes. */
-  record Update(TransactionReference reference, UpdateFields changes)
-      implements TransactionAction {
+  /** Update a transaction resolved from the supplied reference. */
+  record Update(TransactionReference reference, UpdateFields changes) implements TransactionAction {
+
     public Update {
       Objects.requireNonNull(reference, "reference is required");
       Objects.requireNonNull(changes, "changes is required");
     }
   }
 
-  /** Undo the last recorded transaction (delete it). */
+  /** Undo the last recorded transaction. */
   record Undo() implements TransactionAction {}
 
-  /** Confirm a pending action (e.g., delete confirmation). */
+  /** Confirm the pending action in the current conversation. */
   record Confirm() implements TransactionAction {}
 
-  /** Cancel a pending action. */
+  /** Cancel the pending action in the current conversation. */
   record Cancel() implements TransactionAction {}
 }

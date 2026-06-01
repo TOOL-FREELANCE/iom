@@ -51,6 +51,32 @@ public class TransactionService {
     return saved;
   }
 
+  @Transactional
+  public List<Transaction> recordAll(
+      AppUser user, List<ParsedTransaction> parsedTransactions, MessageChannel source, String rawInput) {
+    Objects.requireNonNull(user, "user must not be null");
+    Objects.requireNonNull(parsedTransactions, "parsedTransactions must not be null");
+    Objects.requireNonNull(source, "source must not be null");
+
+    if (parsedTransactions.isEmpty()) {
+      throw new IllegalArgumentException("parsedTransactions must not be empty");
+    }
+
+    var transactions =
+        parsedTransactions.stream()
+            .map(parsed -> transactionMapper.toEntity(user, parsed, source, rawInput))
+            .toList();
+    var saved = transactionRepository.saveAll(transactions);
+
+    log.info(
+        "Transactions recorded: userId={}, count={}, source={}",
+        user.getId(),
+        saved.size(),
+        source);
+
+    return saved;
+  }
+
   public TransactionSummary summarize(AppUser user, Instant from, Instant to) {
     Objects.requireNonNull(user, "user must not be null");
     Objects.requireNonNull(from, "from must not be null");

@@ -17,6 +17,8 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface TransactionMapper {
 
+  ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
   @Mapping(target = "id", ignore = true)
   @Mapping(target = "createdAt", ignore = true)
   @Mapping(target = "updatedAt", ignore = true)
@@ -36,6 +38,6 @@ public interface TransactionMapper {
     if (date == null) {
       return Instant.now();
     }
-    return date.atStartOfDay(ZoneId.systemDefault()).toInstant();
+    return date.atStartOfDay(VIETNAM_ZONE).toInstant();
   }
 }

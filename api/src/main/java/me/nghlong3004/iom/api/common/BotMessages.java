@@ -47,6 +47,22 @@ public class BotMessages {
     return get("bot.transaction.recorded", typeLabel, formattedAmount, note);
   }
 
+  public String transactionRecordedBatchHeader(int count) {
+    return get("bot.transaction.recorded.batch.header", count);
+  }
+
+  public String transactionRecordedBatchLine(
+      int index, String typeLabel, String formattedAmount, String note) {
+    if (note == null || note.isBlank()) {
+      return get("bot.transaction.recorded.batch.line.no-note", index, typeLabel, formattedAmount);
+    }
+    return get("bot.transaction.recorded.batch.line", index, typeLabel, formattedAmount, note);
+  }
+
+  public String transactionBatchTooLarge(int maxBatchSize) {
+    return get("bot.transaction.batch.too-large", maxBatchSize);
+  }
+
   public String typeLabel(boolean isIncome) {
     return isIncome ? get("bot.transaction.type.income") : get("bot.transaction.type.expense");
   }
@@ -87,8 +103,8 @@ public class BotMessages {
     return get("bot.detail.header", label);
   }
 
-  public String detailLine(int index, String emoji, String note, String typeLabel, String formattedAmount) {
-    return get("bot.detail.line", index, emoji, note, typeLabel, formattedAmount);
+  public String detailLine(int index, String note, String typeLabel, String formattedAmount) {
+    return get("bot.detail.line", index, note, typeLabel, formattedAmount);
   }
 
   public String detailEmpty(String label) {
