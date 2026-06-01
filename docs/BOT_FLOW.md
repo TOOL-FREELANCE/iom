@@ -7,7 +7,7 @@ Read this before opening the message handler classes.
 
 The bot currently supports:
 
-- Recording income/expense transactions from natural-language messages.
+- Recording one or more income/expense transactions from natural-language messages.
 - Slash commands: `/start`, `/help`, `/today`, `/month`.
 - Bot-name suffix normalization, for example `/today@my_bot`.
 - Natural-language summary requests, for example:
@@ -15,16 +15,21 @@ The bot currently supports:
   - `thang nay chi bao nhieu`
   - `hom qua tieu bao nhieu`
   - `tu 1/5 den 20/5 chi bao nhieu`
-- **Transaction history / detail view**, for example:
+- Transaction history / detail view, for example:
   - `hom qua mua gi`
   - `hom kia chi gi`
   - `lich su tuan nay`
-- **Transaction management (delete / update / undo)**, for example:
+- Transaction management:
   - `xoa cai vua roi`
-  - `sua so 2 thanh 50k`
+  - `xoa so 2`
   - `undo`
+  - `ok` / `huy` confirmation flow for pending delete actions
 - Fallback guidance for unrelated text.
 - Vietnamese user-facing replies via `messages.properties`.
+
+Important current limitation: `TransactionService` and domain objects contain update support, but
+the active NLP tool surface only exposes record, view, delete, and undo. Natural-language update
+messages are not wired as a tool yet.
 
 ## High-Level Runtime Flow
 
@@ -38,15 +43,12 @@ Telegram update
   -> MessageSender reply
 ```
 
-The router calls every handler whose `supports(message)` returns `true`.
-Each handler returns a boolean from `handle(message)`:
+The router iterates handlers in `@Order` priority. For each handler:
 
-- `true`: message was handled; routing stops.
-- `false`: handler did not handle it; router tries the next handler.
-
-This matters because non-command text first goes through transaction parsing. If the
-transaction parser says "not a transaction", routing continues to the view finances handler
-and then fallback.
+- If `supports(message)` returns `false`, the router skips it.
+- If `supports(message)` returns `true`, the router calls `handle(message)`.
+- `handle() == true`: routing stops.
+- `handle() == false`: router continues to the next matching handler.
 
 ## Handler Order
 
@@ -54,192 +56,212 @@ and then fallback.
 | --- | --- | --- | --- |
 | `1` | `handler/command` | `StartCommandHandler` | `/start` welcome message |
 | `2` | `handler/command` | `HelpCommandHandler` | `/help` usage message |
-| `3` | `handler/command` | `SummaryCommandHandler` | `/today`, `/month` summary (unified) |
+| `3` | `handler/command` | `SummaryCommandHandler` | `/today`, `/month` summary |
+| `50` | `handler/nlp` | `NlpMessageHandler` | all non-command text through Spring AI Tool Calling |
 | `98` | `handler/command` | `UnknownCommandHandler` | unknown slash commands |
-| `50` | `handler/nlp` | `RecordTransactionHandler` | non-command transaction recording |
-| `60` | `handler/nlp` | `ManageTransactionHandler` | delete / update / undo / confirm / cancel |
-| `80` | `handler/nlp` | `ViewFinancesHandler` | natural-language summary/history intent |
-| `99` | `handler/nlp` | `EchoMessageHandler` | fallback guidance |
 
-## Transaction Recording
+There are no separate active `RecordTransactionHandler`, `ManageTransactionHandler`,
+`ViewFinancesHandler`, or `EchoMessageHandler` classes anymore. They were replaced by
+`NlpMessageHandler` plus `FinanceTools`.
+
+## Slash Commands
 
 Key files:
 
-- `application/port/out/MessageInterpreter.java`
-- `service/LlmMessageInterpreter.java`
-- `application/handler/nlp/RecordTransactionHandler.java`
+- `application/handler/command/BotCommand.java`
+- `application/handler/command/BotCommandParser.java`
+- `application/handler/command/StartCommandHandler.java`
+- `application/handler/command/HelpCommandHandler.java`
+- `application/handler/command/SummaryCommandHandler.java`
+- `application/handler/command/UnknownCommandHandler.java`
+
+`BotCommandParser` normalizes commands and strips bot-name suffixes, so `/today@my_bot` is treated
+as `/today`.
+
+`SummaryCommandHandler` handles all summary slash commands by reading date range factories from
+`BotCommand`. To add `/week`, add a `BotCommand` enum constant with a `DateRange` factory.
+
+## NLP Tool-Calling Flow
+
+Key files:
+
+- `application/handler/nlp/NlpMessageHandler.java`
+- `application/handler/nlp/NlpSystemPromptFactory.java`
+- `application/handler/nlp/PendingActionHandler.java`
+- `application/handler/nlp/FinanceTools.java`
+- `application/handler/nlp/FinanceToolsFactory.java`
+- `application/handler/nlp/TransactionDraft.java`
+- `application/handler/nlp/TransactionDraftMapper.java`
+- `config/ChatClientConfig.java`
 - `service/TransactionService.java`
 - `common/ConfirmationFormatter.java`
+- `common/FinanceViewRenderer.java`
+- `common/BotMessages.java`
 
 Flow:
 
 ```text
-RecordTransactionHandler
-  -> MessageInterpreter.interpret(text)
-  -> Optional.empty(): return false
-  -> ParsedTransaction: resolve user, save transaction,
-     save lastRecordedTransactionId to ConversationContext,
-     send confirmation, return true
+NlpMessageHandler.handle(message)
+  1. Load ConversationContext by key: channel + ":" + externalUserId
+  2. If context is AWAITING_CONFIRMATION:
+     - exact confirm keyword -> execute pending delete, clear pending, reply
+     - exact cancel keyword -> clear pending, reply
+     - anything else -> clear pending and continue to LLM
+  3. Resolve AppUser through UserResolver
+  4. Create request-scoped FinanceTools through FinanceToolsFactory
+  5. Build ChatClient with system prompt + user text + tools
+  6. Spring AI calls the selected tool or returns a fallback-style Vietnamese answer
+  7. Send returned content through MessageSender
 ```
 
-`LlmMessageInterpreter` uses Spring AI `ChatModel` with DeepSeek configured by Spring AI.
-It returns empty for blank input, non-transaction JSON, malformed JSON, invalid values, or
-model call failures.
+The keyword guard exists so short confirmation messages like `ok` and `huy` do not go through the
+LLM and accidentally get interpreted as unrelated text.
 
-## Finance View Pipeline (Summary / History)
+## Available Finance Tools
+
+`FinanceTools` is created per request. It is not a Spring component because it carries the current
+user, message channel, raw input, and conversation key.
+
+| Tool | Purpose | Side effects |
+| --- | --- | --- |
+| `recordTransactions` | Saves one or more income/expense items parsed by the model | records all items atomically, saves bounded `lastRecordedTransactionIds`, returns batch confirmation |
+| `recordTransaction` | Compatibility single-item tool | delegates to `recordTransactions` with one item |
+| `viewFinances` | Renders summary or transaction history for an LLM-supplied date range | saves bounded `lastViewedTransactionIds` only for indexed detail/compact views |
+| `deleteTransaction` | Starts a delete confirmation flow for `LATEST` or `BY_INDEX` references | saves pending `DELETE`, returns confirmation prompt |
+| `undoLastTransaction` | Deletes the last record action immediately | clears `lastRecordedTransactionIds`, returns undo confirmation |
+
+### Record Transactions
+
+```text
+recordTransactions([TransactionDraft...])
+  -> reject empty or >10 item batches
+  -> TransactionDraftMapper maps every draft to ParsedTransaction
+  -> TransactionService.recordAll(user, parsedTransactions, channel, rawInput)
+  -> context.lastRecordedTransactionIds = saved ids (bounded to 10)
+  -> ConfirmationFormatter.formatBatch(parsedTransactions)
+```
+
+Amounts must be in the smallest currency unit. For VND this is the plain dong amount; for USD/EUR/GBP
+this means cents. The batch path is all-or-nothing: invalid arguments prevent any item from being
+saved.
+
+### View Finances
+
+```text
+viewFinances(from, to, label, filter, viewMode)
+  -> DateRange.custom(fromInstant, toInstant, label)
+  -> parse FlowFilter and ViewMode
+  -> TransactionService.findByRange(user, dateRange)
+  -> TransactionSummary.from(transactions)
+  -> autoAdjustViewMode(mode, count)
+  -> if effective mode is DETAIL/COMPACT, context.lastViewedTransactionIds = displayed ids
+  -> FinanceViewRenderer.render(...)
+```
+
+The LLM supplies the resolved `from` and `to` dates directly as `yyyy-MM-dd`. There is no active
+`DateRangeResolver` chain in the current code.
+
+### Delete And Confirmation
+
+```text
+deleteTransaction(referenceType, index)
+  -> LATEST uses the last id from context.lastRecordedTransactionIds
+  -> BY_INDEX uses context.lastViewedTransactionIds[index - 1]
+  -> find transaction for current user
+  -> context.setPending(DELETE, transactionId, description)
+  -> ask user to type ok/huy
+
+ok
+  -> PendingActionHandler keyword guard
+  -> TransactionService.delete(user, pending.transactionId)
+  -> context.clearPending()
+  -> reply deleted
+
+huy
+  -> context.clearPending()
+  -> reply cancelled
+```
+
+## Conversation Context
 
 Key files:
 
-- `domain/summary/DateRange.java` — value object for date ranges
-- `domain/summary/ViewMode.java` — SUMMARY, DETAIL, COMPACT
-- `domain/summary/FlowFilter.java` — ALL, EXPENSE, INCOME
-- `domain/summary/FinanceQuery.java` — sealed interface: View | Clarification
-- `application/port/out/DateRangeResolver.java` — port for date resolution
-- `service/KeywordDateResolver.java` — deterministic keyword matcher (Order 1)
-- `service/LlmDateRangeResolver.java` — LLM fallback (Order 2)
-- `service/DateRangeResolverChain.java` — chain orchestrator
-- `application/handler/nlp/ViewFinancesHandler.java` — pipeline handler
-- `common/FinanceViewRenderer.java` — multi-mode renderer
-- `config/BotIntentProperties.java` — keyword config
+- `domain/conversation/ConversationContext.java`
+- `application/port/out/ConversationContextStore.java`
+- `service/InMemoryConversationContextStore.java`
 
-### Pipeline Architecture
+State machine:
 
 ```text
-ViewFinancesHandler.handle(message)
-  1. DateRangeResolverChain.resolve(text)     — Chain of Responsibility
-     ├─ KeywordDateResolver (Order 1)          deterministic: "hom qua" → yesterday
-     └─ LlmDateRangeResolver (Order 2)        LLM fallback: "tu 1/5 den 20/5"
-  2. detectFlowFilter(text)                   — keyword-based: chi → EXPENSE
-  3. detectViewMode(text)                     — keyword-based: "mua gi" → DETAIL
-  4. TransactionService.findByRange()         — fetch data
-  5. autoAdjustViewMode(mode, count)          — DETAIL + ≤10 → COMPACT, >10 → SUMMARY
-  6. FinanceViewRenderer.render()             — Strategy per ViewMode
+IDLE --deleteTransaction--> AWAITING_CONFIRMATION
+AWAITING_CONFIRMATION --ok--> execute delete --> IDLE
+AWAITING_CONFIRMATION --huy--> IDLE
+AWAITING_CONFIRMATION --new non-keyword message--> clear pending, process new message
 ```
 
-### Date Resolution (Chain of Responsibility)
+Context is updated by:
 
-`KeywordDateResolver` handles common Vietnamese date expressions deterministically:
+- `FinanceTools.recordTransactions`: saves bounded `lastRecordedTransactionIds`
+- `FinanceTools.viewFinances`: saves bounded `lastViewedTransactionIds` for indexed views
+- `FinanceTools.deleteTransaction`: saves pending `DELETE`
+- `PendingActionHandler`: executes or clears pending actions
 
-| Keyword | Resolves To |
-| --- | --- |
-| `hom nay`, `today` | `DateRange.today()` |
-| `hom qua`, `yesterday` | `DateRange.yesterday()` |
-| `hom kia` | `DateRange.daysAgo(2)` |
-| `tuan nay`, `week` | `DateRange.thisWeek()` |
-| `thang nay`, `month` | `DateRange.thisMonth()` |
+`InMemoryConversationContextStore` is an in-memory adapter with TTL behavior. It is suitable for the
+current bot flow, but pending state is not durable across application restarts.
 
-When keyword matching fails, `LlmDateRangeResolver` calls DeepSeek for complex date
-expressions like `"tu 1/5 den 20/5"` or `"7 ngay qua"`.
+## Finance Rendering
 
-### ViewMode Auto-Adjustment
+Key files:
+
+- `domain/summary/DateRange.java`
+- `domain/summary/ViewMode.java`
+- `domain/summary/FlowFilter.java`
+- `common/FinanceViewRenderer.java`
+- `service/TransactionSummary.java`
+
+`FinanceViewRenderer` supports:
+
+- `SUMMARY`: totals only.
+- `DETAIL`: individual transactions only.
+- `COMPACT`: individual transactions plus totals.
+
+Renderer output is plain text by default. Domain categories do not carry emoji, so the same rendered
+content is suitable for Telegram, Web, and future channels.
+
+View mode auto-adjustment inside `FinanceTools`:
 
 | Requested | Transaction Count | Effective |
 | --- | --- | --- |
 | SUMMARY | any | SUMMARY |
-| DETAIL | 0 | DETAIL (shows empty message) |
-| DETAIL | 1–10 | COMPACT (list + totals) |
-| DETAIL | >10 | SUMMARY (totals only) |
+| DETAIL | 0 | DETAIL |
+| DETAIL | 1-10 | COMPACT |
+| DETAIL | >10 | SUMMARY |
 
-### FlowFilter
+`FlowFilter` controls the totals/detail focus:
 
-`FlowFilter` controls reply focus:
-
-- `ALL`: show both expense and income totals.
-- `EXPENSE`: show expense total only.
-- `INCOME`: show income total only.
-
-Command summaries keep `ALL` by default. Natural-language summaries can use any filter.
-
-## Transaction Management (Delete / Update / Undo)
-
-Key files:
-
-- `domain/transaction/TransactionReference.java` — sealed: Latest, ByIndex, ByMatch
-- `domain/transaction/TransactionAction.java` — sealed: Delete, Update, Undo, Confirm, Cancel
-- `domain/transaction/UpdateFields.java` — partial update value object
-- `domain/conversation/ConversationContext.java` — per-user stateful session
-- `application/port/out/ConversationContextStore.java` — storage port
-- `application/port/out/ActionResolver.java` — action resolution port
-- `service/InMemoryConversationContextStore.java` — in-memory adapter (30min TTL)
-- `service/KeywordActionResolver.java` — deterministic keyword matcher (Order 1)
-- `service/ActionResolverChain.java` — chain orchestrator
-- `application/handler/nlp/ManageTransactionHandler.java` — handler (Order 60)
-
-### Conversation Flow
-
-```text
-ManageTransactionHandler.handle(message)
-  1. Load ConversationContext from store
-  2. If AWAITING_CONFIRMATION:
-     ├─ Confirm → execute pending (delete/update) → reply → clear
-     └─ Cancel  → reply "Đã hủy" → clear
-  3. ActionResolverChain.resolve(text)
-     ├─ KeywordActionResolver (Order 1): deterministic
-     └─ (LlmActionResolver Order 2: future, ByMatch)
-  4. Resolve TransactionReference:
-     ├─ Latest  → context.lastRecordedTransactionId
-     ├─ ByIndex → context.lastViewedTransactionIds[n-1]
-     └─ ByMatch → LLM fuzzy match (future)
-  5. Ask confirmation → state = AWAITING_CONFIRMATION
-```
-
-### Transaction References
-
-| User Input | Reference | Source |
-| --- | --- | --- |
-| `xoa cai vua roi` | `Latest` | `ConversationContext.lastRecordedTransactionId` |
-| `xoa so 2` | `ByIndex(2)` | `ConversationContext.lastViewedTransactionIds` |
-| `xoa cai an sang 30k` | `ByMatch(...)` | LLM fuzzy match (future) |
-
-### ConversationContext State Machine
-
-```text
-IDLE ──(delete/update)──> AWAITING_CONFIRMATION
-AWAITING_CONFIRMATION ──(ok)──> execute action ──> IDLE
-AWAITING_CONFIRMATION ──(hủy)──> IDLE
-```
-
-Context is updated by:
-- `RecordTransactionHandler`: saves `lastRecordedTransactionId`
-- `ViewFinancesHandler`: saves `lastViewedTransactionIds`
+- `ALL`: show both expense and income.
+- `EXPENSE`: show expenses only.
+- `INCOME`: show income only.
 
 ## Configuration
 
-Keyword config lives in profile YAML files under:
+DeepSeek/Spring AI config lives in profile YAML files:
 
 ```yaml
-iom:
-  bot:
-    intents:
-      summary:
-        action-keywords: [...]
-        today-keywords: [...]
-        yesterday-keywords: [...]
-        day-before-keywords: [...]
-        this-week-keywords: [...]
-        month-keywords: [...]
-        expense-keywords: [...]
-        income-keywords: [...]
-        detail-keywords: [...]
-      manage-action:
-        delete-keywords: [...]
-        update-keywords: [...]
-        undo-keywords: [...]
-        confirm-keywords: [...]
-        cancel-keywords: [...]
-        latest-keywords: [...]
-        index-pattern: "(?:so|số)\\s*(\\d+)"
+spring:
+  ai:
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+          temperature: 0
+          max-tokens: ${DEEPSEEK_MAX_TOKENS:512}
 ```
 
-DeepSeek/Spring AI config uses:
-
-```properties
-spring.ai.deepseek.api-key=${DEEPSEEK_API_KEY:}
-spring.ai.deepseek.base-url=${DEEPSEEK_BASE_URL:https://api.deepseek.com}
-spring.ai.deepseek.chat.options.model=${DEEPSEEK_MODEL:deepseek-v4-flash}
-spring.ai.deepseek.chat.options.temperature=0
-spring.ai.deepseek.chat.options.max-tokens=${DEEPSEEK_MAX_TOKENS:512}
-```
+There is no active `iom.bot.intents` keyword configuration in the current source tree. Confirmation
+keywords are currently constants in `PendingActionHandler`.
 
 ## User-Facing Messages
 
@@ -248,29 +270,26 @@ All Vietnamese bot replies should go through:
 - `common/BotMessages.java`
 - `src/main/resources/messages.properties`
 
-Do not hardcode Vietnamese user-facing text in Java classes. Prompt/schema text inside LLM
-adapters may stay in Java because it is not sent directly as a bot reply.
+Do not hardcode Vietnamese user-facing text in Java classes. Prompt/schema text inside LLM adapters
+or tool descriptions may stay in Java because it is not sent directly as a bot reply.
 
 ## Test Map
 
 Useful tests:
 
-- `BotMessageRouterTest` (handler/): routing continues on `false` and stops on `true`.
-- `BotCommandParserTest` (handler/command/): slash command normalization, including bot-name suffix.
-- `BasicCommandHandlerTest` (handler/command/): start, help, unknown, echo handler behavior.
-- `SummaryCommandHandlerTest` (handler/command/): unified /today and /month handler.
-- `RecordTransactionHandlerTest` (handler/nlp/): transaction parse empty vs valid result.
-- `ManageTransactionHandlerTest` (handler/nlp/): delete/update/undo, confirm/cancel, ByIndex.
-- `ViewFinancesHandlerTest` (handler/nlp/): pipeline mock — date resolution, mode detection, rendering.
-- `KeywordDateResolverTest`: all keyword combinations, accent handling.
-- `DateRangeResolverChainTest`: chain ordering, fallback behavior.
+- `BotMessageRouterTest`: routing continues on `false` and stops on `true`.
+- `BotCommandParserTest`: slash command normalization, including bot-name suffix.
+- `BasicCommandHandlerTest`: start, help, unknown command behavior.
+- `SummaryCommandHandlerTest`: unified `/today` and `/month` handler.
+- `NlpMessageHandlerTest`: non-command support, pending-handler short-circuit, LLM delegation.
+- `PendingActionHandlerTest`: confirm/cancel pending delete flow.
+- `FinanceToolsTest`: batch record, view, delete, undo tool behavior.
+- `TransactionDraftMapperTest`: tool DTO to domain mapping.
 - `FinanceViewRendererTest`: SUMMARY, DETAIL, COMPACT output.
-- `DateRangeTest`: factory methods, validation.
+- `DateRangeTest`: factory methods and validation.
 - `FinanceQueryTest`: sealed variants construction.
-- `LlmMessageInterpreterTest`: DeepSeek transaction JSON parsing.
-- `KeywordActionResolverTest`: all action keyword combos, accent handling.
-- `ActionResolverChainTest`: chain ordering, fallback.
-- `ConversationContextTest`: state transitions, index resolution.
+- `TransactionActionTest` and `TransactionReferenceTest`: domain transaction management records.
+- `ConversationContextTest`: state transitions and index resolution.
 - `InMemoryConversationContextStoreTest`: create, save, isolation.
 
 Verification command:
