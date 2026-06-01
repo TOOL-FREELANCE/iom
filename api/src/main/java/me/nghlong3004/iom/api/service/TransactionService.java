@@ -102,6 +102,28 @@ public class TransactionService {
         .filter(transaction -> transaction.getUser().getId().equals(user.getId()));
   }
 
+  public Optional<Transaction> findLatestByUser(AppUser user) {
+    Objects.requireNonNull(user, "user must not be null");
+    return transactionRepository.findFirstByUserIdOrderByOccurredAtDescIdDesc(user.getId());
+  }
+
+  public List<Transaction> findAllByUserAndIds(AppUser user, List<Long> transactionIds) {
+    Objects.requireNonNull(user, "user must not be null");
+    Objects.requireNonNull(transactionIds, "transactionIds must not be null");
+    if (transactionIds.isEmpty()) {
+      return List.of();
+    }
+
+    var transactionsById =
+        transactionRepository.findAllById(transactionIds).stream()
+            .filter(transaction -> transaction.getUser().getId().equals(user.getId()))
+            .collect(java.util.stream.Collectors.toMap(Transaction::getId, transaction -> transaction));
+    return transactionIds.stream()
+        .map(transactionsById::get)
+        .filter(Objects::nonNull)
+        .toList();
+  }
+
   @Transactional
   public void delete(AppUser user, Long transactionId) {
     Objects.requireNonNull(user, "user must not be null");

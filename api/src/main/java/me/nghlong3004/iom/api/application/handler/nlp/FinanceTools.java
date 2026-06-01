@@ -2,6 +2,7 @@ package me.nghlong3004.iom.api.application.handler.nlp;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -165,6 +166,41 @@ public class FinanceTools {
       returnDirect = true,
       description =
           """
+      Show transactions referenced by trusted server context.
+      Use when the user says "các giao dịch đó", "mấy giao dịch vừa rồi", "2 giao dịch đó là gì",
+      or similar follow-up references.
+      referenceType:
+        - AUTO: prefer last viewed transactions, otherwise last recorded transactions
+        - LAST_VIEWED: transactions from the last rendered indexed list
+        - LAST_RECORDED: transactions from the last record action
+      """)
+  String viewReferencedTransactions(
+      @ToolParam(description = "AUTO, LAST_VIEWED, or LAST_RECORDED") String referenceType) {
+    var context = contextStore.get(conversationKey);
+    var ids = resolveReferencedTransactionIds(referenceType, context);
+    if (ids.isEmpty()) {
+      return context.hasViewedList() ? botMessages.manageNotFound() : botMessages.manageNoList();
+    }
+
+    var transactions = transactionService.findAllByUserAndIds(user, ids);
+    if (transactions.isEmpty()) {
+      return botMessages.manageNotFound();
+    }
+
+    context.setLastViewedTransactionIds(transactions.stream().map(Transaction::getId).toList());
+    contextStore.save(context);
+
+    var range =
+        DateRange.custom(Instant.EPOCH, Instant.EPOCH.plusSeconds(1), "Các giao dịch vừa nhắc tới");
+    var summary = TransactionSummary.from(transactions);
+    log.info("Tool viewReferencedTransactions: count={}", transactions.size());
+    return financeViewRenderer.render(range, ViewMode.DETAIL, transactions, summary, FlowFilter.ALL);
+  }
+
+  @Tool(
+      returnDirect = true,
+      description =
+          """
       Delete a transaction. Use when user says "xóa", "xoá", "bỏ", "delete" referring to a transaction.
       referenceType determines how to find the transaction:
         - LATEST: delete the most recently recorded transaction
@@ -286,11 +322,33 @@ public class FinanceTools {
       String referenceType, Integer index, ConversationContext context) {
     var normalizedReferenceType = referenceType == null ? "" : referenceType.trim().toUpperCase();
     return switch (normalizedReferenceType) {
-      case "LATEST" -> context.resolveLatestRecorded();
+      case "LATEST" -> resolveLatestTransactionId(context);
       case "BY_INDEX" -> (index != null && context.hasViewedList())
           ? context.resolveByIndex(index)
           : null;
       default -> null;
+    };
+  }
+
+  private Long resolveLatestTransactionId(ConversationContext context) {
+    var contextTransactionId = context.resolveLatestRecorded();
+    if (contextTransactionId != null) {
+      return contextTransactionId;
+    }
+
+    return transactionService.findLatestByUser(user).map(Transaction::getId).orElse(null);
+  }
+
+  private List<Long> resolveReferencedTransactionIds(
+      String referenceType, ConversationContext context) {
+    var normalizedReferenceType = referenceType == null ? "AUTO" : referenceType.trim().toUpperCase();
+    return switch (normalizedReferenceType) {
+      case "LAST_VIEWED" -> context.getLastViewedTransactionIds();
+      case "LAST_RECORDED" -> context.getLastRecordedTransactionIds();
+      case "AUTO" -> context.hasViewedList()
+          ? context.getLastViewedTransactionIds()
+          : context.getLastRecordedTransactionIds();
+      default -> List.of();
     };
   }
 

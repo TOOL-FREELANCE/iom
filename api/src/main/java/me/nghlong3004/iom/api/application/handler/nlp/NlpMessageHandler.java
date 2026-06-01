@@ -47,6 +47,7 @@ public class NlpMessageHandler implements BotMessageHandler {
   private final BotMessages botMessages;
   private final PendingActionHandler pendingActionHandler;
   private final NlpSystemPromptFactory systemPromptFactory;
+  private final NlpPromptContextFactory promptContextFactory;
 
   @Override
   public boolean supports(IncomingMessage message) {
@@ -73,7 +74,7 @@ public class NlpMessageHandler implements BotMessageHandler {
               .build()
               .prompt()
               .system(systemPromptFactory.build())
-              .user(message.normalizedText())
+              .user(promptContextFactory.build(context, message.normalizedText()))
               .tools(financeTools)
               .call()
               .content();

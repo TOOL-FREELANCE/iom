@@ -174,6 +174,46 @@ class TransactionServiceTest {
   }
 
   @Test
+  @DisplayName("Should find transactions by user and preserve requested ID order")
+  void findAllByUserAndIds_ValidInput_ReturnsOwnedTransactionsInRequestedOrder() {
+    var user = AppUser.builder().id(1L).build();
+    var otherUser = AppUser.builder().id(2L).build();
+    var tx10 = Transaction.builder().id(10L).user(user).build();
+    var tx20 = Transaction.builder().id(20L).user(user).build();
+    var tx30 = Transaction.builder().id(30L).user(otherUser).build();
+    given(transactionRepository.findAllById(List.of(20L, 10L, 30L)))
+        .willReturn(List.of(tx10, tx30, tx20));
+
+    var result = service.findAllByUserAndIds(user, List.of(20L, 10L, 30L));
+
+    assertThat(result).containsExactly(tx20, tx10);
+  }
+
+  @Test
+  @DisplayName("Should return empty list when finding by empty ID list")
+  void findAllByUserAndIds_EmptyIds_ReturnsEmptyList() {
+    var user = AppUser.builder().id(1L).build();
+
+    var result = service.findAllByUserAndIds(user, List.of());
+
+    assertThat(result).isEmpty();
+    verify(transactionRepository, org.mockito.Mockito.never()).findAllById(any());
+  }
+
+  @Test
+  @DisplayName("Should find latest transaction by user")
+  void findLatestByUser_ValidUser_ReturnsLatestTransaction() {
+    var user = AppUser.builder().id(1L).build();
+    var tx = Transaction.builder().id(99L).user(user).build();
+    given(transactionRepository.findFirstByUserIdOrderByOccurredAtDescIdDesc(1L))
+        .willReturn(java.util.Optional.of(tx));
+
+    var result = service.findLatestByUser(user);
+
+    assertThat(result).contains(tx);
+  }
+
+  @Test
   @DisplayName("Should throw NullPointerException when user is null in record")
   void record_NullUser_ThrowsNpe() {
     var parsed =

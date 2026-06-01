@@ -205,6 +205,45 @@ class FinanceToolsTest {
   }
 
   @Nested
+  @DisplayName("viewReferencedTransactions()")
+  class ViewReferencedTransactions {
+
+    @Test
+    @DisplayName("Should render last viewed transactions when using auto reference")
+    void viewReferencedTransactions_Auto_UsesLastViewedIds() {
+      context.setLastRecordedTransactionIds(List.of(1L));
+      context.setLastViewedTransactionIds(List.of(10L, 20L));
+      var tx1 = transaction(10L, Currency.VND, TransactionType.EXPENSE, 80000L);
+      var tx2 = transaction(20L, Currency.VND, TransactionType.EXPENSE, 60000L);
+      var txList = List.of(tx1, tx2);
+      when(transactionService.findAllByUserAndIds(user, List.of(10L, 20L))).thenReturn(txList);
+      when(financeViewRenderer.render(
+              any(DateRange.class),
+              eq(ViewMode.DETAIL),
+              eq(txList),
+              any(TransactionSummary.class),
+              eq(FlowFilter.ALL)))
+          .thenReturn("Các giao dịch vừa nhắc tới:\n1. bún bò\n2. trà sữa");
+
+      var result = tools.viewReferencedTransactions("AUTO");
+
+      assertThat(result).contains("bún bò");
+      assertThat(context.getLastViewedTransactionIds()).containsExactly(10L, 20L);
+    }
+
+    @Test
+    @DisplayName("Should return no-list message when there is no referenced list")
+    void viewReferencedTransactions_NoContext_ReturnsNoList() {
+      when(botMessages.manageNoList()).thenReturn("no list");
+
+      var result = tools.viewReferencedTransactions("AUTO");
+
+      assertThat(result).isEqualTo("no list");
+      verify(transactionService, never()).findAllByUserAndIds(any(), any());
+    }
+  }
+
+  @Nested
   @DisplayName("deleteTransaction()")
   class DeleteTransaction {
 
@@ -229,12 +268,29 @@ class FinanceToolsTest {
     @Test
     @DisplayName("Should return not-found when no recent transaction")
     void deleteTransaction_NoRecent_ReturnsNotFound() {
+      when(transactionService.findLatestByUser(user)).thenReturn(Optional.empty());
       when(botMessages.manageNoRecent()).thenReturn("no recent");
 
       var result = tools.deleteTransaction("LATEST", null);
 
       assertThat(result).isEqualTo("no recent");
       assertThat(context.isAwaitingConfirmation()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Should fall back to latest persisted transaction when context is empty")
+    void deleteTransaction_LatestWithoutContext_UsesLatestPersistedTransaction() {
+      var tx = transaction(99L, Currency.VND, TransactionType.EXPENSE, 120000L);
+      when(tx.getNote()).thenReturn("cà phê");
+      when(transactionService.findLatestByUser(user)).thenReturn(Optional.of(tx));
+      when(transactionService.findByUserAndId(user, 99L)).thenReturn(Optional.of(tx));
+      when(botMessages.manageConfirmDelete("cà phê")).thenReturn("confirm cà phê ok");
+
+      var result = tools.deleteTransaction("LATEST", null);
+
+      assertThat(result).contains("cà phê");
+      assertThat(context.isAwaitingConfirmation()).isTrue();
+      assertThat(context.getPendingAction().transactionId()).isEqualTo(99L);
     }
   }
 

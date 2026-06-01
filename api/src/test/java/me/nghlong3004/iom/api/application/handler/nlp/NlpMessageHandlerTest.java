@@ -37,6 +37,7 @@ class NlpMessageHandlerTest {
   @Mock private BotMessages botMessages;
   @Mock private PendingActionHandler pendingActionHandler;
   @Mock private NlpSystemPromptFactory systemPromptFactory;
+  @Mock private NlpPromptContextFactory promptContextFactory;
 
   private NlpMessageHandler handler;
 
@@ -51,7 +52,8 @@ class NlpMessageHandlerTest {
             messageSender,
             botMessages,
             pendingActionHandler,
-            systemPromptFactory);
+            systemPromptFactory,
+            promptContextFactory);
   }
 
   @Nested
@@ -110,11 +112,12 @@ class NlpMessageHandlerTest {
     when(userResolver.resolve(message)).thenReturn(user);
     when(financeToolsFactory.create(user, message, "TELEGRAM:user1")).thenReturn(financeTools);
     when(systemPromptFactory.build()).thenReturn("system prompt");
+    when(promptContextFactory.build(context, "ăn trưa 50k")).thenReturn("context prompt");
     when(chatClientBuilderProvider.getObject()).thenReturn(chatClientBuilder);
     when(chatClientBuilder.build()).thenReturn(chatClient);
     when(chatClient.prompt()).thenReturn(promptSpec);
     when(promptSpec.system("system prompt")).thenReturn(promptSpec);
-    when(promptSpec.user("ăn trưa 50k")).thenReturn(promptSpec);
+    when(promptSpec.user("context prompt")).thenReturn(promptSpec);
     when(promptSpec.tools(financeTools)).thenReturn(promptSpec);
     when(promptSpec.call()).thenReturn(callResponse);
     when(callResponse.content()).thenReturn("Đã ghi nhận.");
@@ -127,4 +130,3 @@ class NlpMessageHandlerTest {
     assertThat(captor.getValue().text()).isEqualTo("Đã ghi nhận.");
   }
 }
-
